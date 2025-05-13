@@ -1,15 +1,17 @@
 # deliberation_engine.py
 
-import openai
+from openai import OpenAI
 from typing import List, Dict
-import streamlit as st  # para leer st.secrets
+import streamlit as st
 
 class InquiryEngine:
     """
     Genera subpreguntas usando OpenAI a partir de un prompt y variables.
+    Se basa en la nueva API client = OpenAI().
     """
     def __init__(self):
-        openai.api_key = st.secrets["OPENAI_API_KEY"]
+        # Inicializa el cliente con la clave de Streamlit Secrets
+        self.client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
         self.default_features = ["precio", "ingreso", "edad"]
 
     def generate_subquestions(self, prompt: str, features: List[str] = None) -> List[str]:
@@ -23,10 +25,10 @@ class InquiryEngine:
         user_msg = (
             f"Análisis: {prompt}\n"
             f"Variables: {', '.join(features)}.\n"
-            "Devuélveme 5-7 subpreguntas numeradas."
+            "Devuélveme 5 subpreguntas numeradas, sin explicaciones adicionales."
         )
 
-        resp = openai.ChatCompletion.create(
+        resp = self.client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": system_msg},
@@ -40,12 +42,15 @@ class InquiryEngine:
         subs = []
         for line in text.splitlines():
             line = line.strip()
-            # extrae líneas que empiecen con dígito+punto
+            # extrae líneas que empiecen con dígito + punto
             if line and line[0].isdigit() and "." in line:
                 subs.append(line.split(".", 1)[1].strip())
         return subs
 
 class ReasoningTracker:
+    """
+    Registra el flujo de razonamiento: preguntas planteadas y sus respuestas.
+    """
     def __init__(self):
         self.log: List[Dict] = []
 

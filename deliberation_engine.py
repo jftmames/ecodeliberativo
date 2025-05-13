@@ -1,27 +1,47 @@
 # deliberation_engine.py
+
+import os
+import openai
 from typing import List, Dict
 
+openai.api_key = os.getenv("OPENAI_API_KEY")
+
 class InquiryEngine:
-    """
-    Genera subpreguntas a partir de un texto base.
-    """
     def __init__(self):
-        # variables por defecto si no se pasan
         self.default_features = ["precio", "ingreso", "edad"]
 
     def generate_subquestions(self, prompt: str, features: List[str] = None) -> List[str]:
-        """
-        Crea un listado de subpreguntas:
-          - Una pregunta raíz
-          - Una por cada feature
-        """
         if features is None:
             features = self.default_features
 
+        # Montamos un prompt para GPT
+        sys_msg = (
+            "Eres un asistente que descompone un problema econométrico "
+            "sobre elección del consumidor en subpreguntas claras y jerarquizadas."
+        )
+        user_msg = (
+            f"Problema: {prompt}\n"
+            f"Variables: {', '.join(features)}.\n"
+            "Devuélveme una lista de subpreguntas numeradas."
+        )
+
+        resp = openai.ChatCompletion.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": sys_msg},
+                {"role": "user",   "content": user_msg}
+            ],
+            temperature=0.7,
+            max_tokens=300
+        )
+        text = resp.choices[0].message.content.strip()
+
+        # Parsear las líneas que empiecen con “1.”, “2.”, etc.
         subs = []
-        subs.append("¿Cuáles son los factores principales que influyen en la elección del consumidor?")
-        for f in features:
-            subs.append(f"¿Cómo influye '{f}' en la probabilidad de elección?")
+        for line in text.splitlines():
+            line = line.strip()
+            if line and line[0].isdigit() and "." in line:
+                subs.append(line.split(".", 1)[1].strip())
         return subs
 
 class ReasoningTracker:
@@ -37,4 +57,5 @@ class ReasoningTracker:
 
     def to_json(self) -> Dict:
         return {"steps": self.log}
+
 

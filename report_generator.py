@@ -1,6 +1,5 @@
 # report_generator.py
 from typing import Dict
-import pdfkit  # si más adelante decides usar una librería de PDF
 
 def build_report(data_summary: str,
                  model_summaries: Dict[str, str],
@@ -30,12 +29,14 @@ def build_report(data_summary: str,
     """
     return html
 
-def export_pdf(html: str, output_path: str = "informe.pdf"):
+def export_pdf(html: str, output_path: str = "informe.pdf") -> str:
     """
-    Exporta el HTML a PDF (requiere configuración de wkhtmltopdf o similar).
-    Por ahora placeholder.
+    Exporta el HTML a un fichero. (Placeholder)
+    Por defecto guarda el HTML en un .txt para descargar.
     """
-    # pdfkit.from_string(html, output_path)
-    with open(output_path, "w") as f:
-        f.write(html)  # fallback: guardar HTML como .pdf.txt
+    # Si en el futuro instalas pdfkit o WeasyPrint, aquí podrías llamar a esas librerías.
+    # Por ahora, como placeholder, guardamos el HTML dentro de un .txt renombrado:
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(html)
     return output_path
+

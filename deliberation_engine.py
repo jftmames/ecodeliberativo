@@ -4,24 +4,27 @@ from typing import List, Dict
 class InquiryEngine:
     """
     Genera subpreguntas a partir de un texto base.
-    (Placeholder: implementar con OpenAI/LangChain más adelante)
     """
     def __init__(self):
-        pass
+        # variables por defecto si no se pasan
+        self.default_features = ["precio", "ingreso", "edad"]
 
-    def generate_subquestions(self, prompt: str) -> List[str]:
-        # TODO: sustituir placeholder por llamada a API
-        return [
-            "¿Cómo influye el precio en la elección?",
-            "¿Qué papel juega el ingreso?",
-            "¿Hay efectos por edad?"
-        ]
+    def generate_subquestions(self, prompt: str, features: List[str] = None) -> List[str]:
+        """
+        Crea un listado de subpreguntas:
+          - Una pregunta raíz
+          - Una por cada feature
+        """
+        if features is None:
+            features = self.default_features
+
+        subs = []
+        subs.append("¿Cuáles son los factores principales que influyen en la elección del consumidor?")
+        for f in features:
+            subs.append(f"¿Cómo influye '{f}' en la probabilidad de elección?")
+        return subs
 
 class ReasoningTracker:
-    """
-    Registra el flujo de razonamiento: preguntas planteadas, respuestas,
-    decisiones y reformulaciones.
-    """
     def __init__(self):
         self.log: List[Dict] = []
 
@@ -34,3 +37,4 @@ class ReasoningTracker:
 
     def to_json(self) -> Dict:
         return {"steps": self.log}
+

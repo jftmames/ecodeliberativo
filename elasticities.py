@@ -1,4 +1,3 @@
-```python
 # elasticities.py
 
 import numpy as np
@@ -7,13 +6,6 @@ def compute_logit_elasticities(model, df, features):
     """
     Calcula elasticidades puntuales promedio para un modelo Logit:
       E_j = β_j * x̄_j * (1 - p̄)
-    donde p̄ es la probabilidad media predicha por el modelo.
-    Parámetros:
-      - model: objeto resultante de sm.Logit.fit()
-      - df: DataFrame original con las variables 'features'
-      - features: lista de nombres de columnas usadas como regresores
-    Devuelve:
-      Diccionario {feature: elasticidad}
     """
     # Probabilidades medias
     p = model.predict()
@@ -27,13 +19,7 @@ def compute_logit_elasticities(model, df, features):
 
 def compute_loglog_elasticities(model, features):
     """
-    Para un modelo OLS ajustado con variables en logaritmo (log-log),
-    los coeficientes β_j son directamente elasticidades.
-    Parámetros:
-      - model: objeto resultante de sm.OLS.fit() en datos log-transformados
-      - features: lista de nombres de variables log-transformadas (p.ej. 'log_precio')
-    Devuelve:
-      Diccionario {feature: elasticidad}
+    Para un modelo OLS log-log, los coeficientes son elasticidades directas.
     """
     elasticities = {}
     for feature in features:
@@ -42,8 +28,7 @@ def compute_loglog_elasticities(model, features):
 
 def compute_elasticities(model, df, features, model_type):
     """
-    Función wrapper que elige la fórmula adecuada según el tipo de modelo.
-    model_type: 'Logit' o 'LogLog'
+    Wrapper: elige fórmula según modelo.
     """
     if model_type == 'Logit':
         return compute_logit_elasticities(model, df, features)
@@ -51,6 +36,4 @@ def compute_elasticities(model, df, features, model_type):
         return compute_loglog_elasticities(model, features)
     else:
         raise ValueError(f"Tipo de modelo no soportado: {model_type}")
-```
 
-continuar

@@ -3,4 +3,4 @@ pandas
 numpy
 statsmodels
 matplotlib
-openai
+openai>=1.11.0

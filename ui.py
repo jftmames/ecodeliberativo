@@ -132,7 +132,7 @@ elif phase == "3. Deliberación":
     st.header("3. Módulo de Deliberación")
     prompt = st.text_input("Describe el análisis que quieres realizar:")
     if st.button("Generar subpreguntas"):
-        subs = st.session_state.engine.generate_subquestions(prompt, FEATURES)
+        subs = st.session_state.engine.generate_subquestions(prompt)
         st.session_state.subquestions = subs
         st.session_state.tracker = ReasoningTracker()
 

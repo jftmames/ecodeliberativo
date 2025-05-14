@@ -1,37 +1,27 @@
 # navigator.py
 
-from typing import Dict, Any, List
 import streamlit as st
 
 class EpistemicNavigator:
     """
-    Registro y manejo del tracker epistémico de preguntas y respuestas.
-    Usa el motor almacenado en st.session_state.engine.
+    Almacena y recupera el tracker de pasos de deliberación (pregunta/respuesta).
     """
 
     @staticmethod
-    def record(question: str, answer: str) -> None:
+    def record(question: str, answer: str, metadata: dict = None):
         """
-        Asocia la respuesta a la última subpregunta sin respuesta que coincida.
+        Registra un paso en st.session_state bajo 'navigator_steps'.
         """
-        engine = st.session_state.get("engine", None)
-        if engine is None:
-            # Nada que registrar si no existe motor
-            return
-
-        tracker = engine.get_tracker()
-        # Recorremos de atrás hacia adelante para encontrar el paso pendiente
-        for step in reversed(tracker["steps"]):
-            if step["question"] == question and not step["answer"]:
-                step["answer"] = answer
-                return
+        if metadata is None:
+            metadata = {}
+        step = {"question": question, "answer": answer, "metadata": metadata}
+        if "navigator_steps" not in st.session_state:
+            st.session_state.navigator_steps = []
+        st.session_state.navigator_steps.append(step)
 
     @staticmethod
-    def get_tracker() -> Dict[str, List[Dict[str, Any]]]:
+    def get_tracker() -> dict:
         """
-        Devuelve el tracker completo (lista de pasos con pregunta, respuesta y metadata).
+        Devuelve el tracker con la lista de pasos.
         """
-        engine = st.session_state.get("engine", None)
-        if engine is None:
-            return {"steps": []}
-        return engine.get_tracker()
+        return {"steps": st.session_state.get("navigator_steps", [])}

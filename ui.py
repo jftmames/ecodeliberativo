@@ -82,11 +82,18 @@ def main():
             st.subheader("Elasticidades")
             st.table(elas_df)
 
-            # Gráfico de elasticidades
+            # Gráfico de elasticidades (con detección dinámica de columnas)
             st.subheader("Elasticidades (gráfico)")
-            idx_col, val_col = "Variable", "Elasticidad"
-            chart_data = elas_df.set_index(idx_col)[val_col]
-            st.bar_chart(chart_data)
+            cols = elas_df.columns.tolist()
+            if len(cols) >= 2:
+                if "Variable" in cols and "Elasticidad" in cols:
+                    idx_col, val_col = "Variable", "Elasticidad"
+                else:
+                    idx_col, val_col = cols[0], cols[1]
+                chart_data = elas_df.set_index(idx_col)[val_col]
+                st.bar_chart(chart_data)
+            else:
+                st.warning("Elasticidades: no hay suficientes columnas para graficar.")
 
             # Curva Probabilidad vs Precio
             if "precio" in FEATURES:
@@ -162,7 +169,7 @@ def main():
             if subqs:
                 st.success(f"{len(subqs)} subpreguntas registradas.")
 
-        # **Importante**: siempre hay un atributo .tracker en el engine
+        # Aseguramos que siempre existe tracker en el engine
         tracker = getattr(st.session_state.engine, "tracker", {"steps": []})
         steps = tracker.get("steps", [])
 

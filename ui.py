@@ -148,25 +148,34 @@ def main():
         return
 
     # --- 3. Deliberación ---
-    with tabs[2]:
+      with tabs[2]:
         st.header("3. Deliberación epistémica")
+        # Inicializamos motor si no existe
         if "engine" not in st.session_state:
             st.session_state.engine = DeliberationEngine()
+        # Cuadro para prompt
         prompt = st.text_input("Describe el análisis que quieres realizar:")
         if prompt:
             subqs = st.session_state.engine.generate_subquestions(prompt, FEATURES)
             for i, q in enumerate(subqs, 1):
                 ans = st.text_input(f"{i}. {q}", key=f"ans_{i}")
+                # Registramos tanto pregunta como respuesta
                 EpistemicNavigator.record(q, ans)
             if subqs:
                 st.success(f"{len(subqs)} subpreguntas registradas.")
 
-        # Métricas EEE
-        tracker = EpistemicNavigator.get_tracker()  # {'steps': [...]}
-        if tracker.get("steps"):
+        # Ahora recuperamos el tracker y mostramos las métricas EEE
+        tracker = EpistemicNavigator.get_tracker()  # debe devolver {'steps': [ {question, answer, metadata}, ... ]}
+        steps = tracker.get("steps", [])
+        if steps:
             st.subheader("Métricas Epistémicas (EEE)")
             metrics = compute_eee(tracker, max_steps=10)
-            st.table(pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"]))
+            # Usamos un DataFrame para verlo bonito
+            eeedf = pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"])
+            eeedf.index.name = "Dimensión"
+            st.table(eeedf)
+        else:
+            st.info("Registra al menos una respuesta para ver las métricas EEE.")
 
         st.sidebar.markdown("Paso 3: Deliberación ⚙️")
 

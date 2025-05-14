@@ -10,9 +10,9 @@ from mnl import fit_mnl, predict_mnl
 from elasticities import compute_elasticities
 from deliberation_engine import DeliberationEngine
 from navigator import EpistemicNavigator
-from epistemic_metrics import compute_eee                  # ← Nueva importación
+from epistemic_metrics import compute_eee
 from validation import check_model_diagnostics
-from report_generator import build_report  # export_pdf ya no es necesario
+from report_generator import build_report
 
 def load_example_data():
     np.random.seed(42)
@@ -162,13 +162,10 @@ def main():
             if subqs:
                 st.success(f"{len(subqs)} subpreguntas registradas.")
 
-        # Recuperamos el tracker desde el engine
-        try:
-            tracker = st.session_state.engine.get_tracker()
-        except AttributeError:
-            tracker = getattr(st.session_state.engine, "tracker", {"steps": []})
-
+        # **Importante**: siempre hay un atributo .tracker en el engine
+        tracker = getattr(st.session_state.engine, "tracker", {"steps": []})
         steps = tracker.get("steps", [])
+
         if steps:
             st.subheader("Métricas Epistémicas (EEE)")
             metrics = compute_eee(tracker, max_steps=10)

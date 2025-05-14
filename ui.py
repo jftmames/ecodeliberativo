@@ -82,18 +82,14 @@ def main():
             st.subheader("Elasticidades")
             st.table(elas_df)
 
-            # Gráfico de elasticidades (con detección dinámica de columnas)
+            # Gráfico de elasticidades
             st.subheader("Elasticidades (gráfico)")
             cols = elas_df.columns.tolist()
             if len(cols) >= 2:
-                if "Variable" in cols and "Elasticidad" in cols:
-                    idx_col, val_col = "Variable", "Elasticidad"
-                else:
-                    idx_col, val_col = cols[0], cols[1]
-                chart_data = elas_df.set_index(idx_col)[val_col]
-                st.bar_chart(chart_data)
+                idx_col, val_col = ( "Variable", "Elasticidad" ) if {"Variable","Elasticidad"}.issubset(cols) else (cols[0], cols[1])
+                st.bar_chart( elas_df.set_index(idx_col)[val_col] )
             else:
-                st.warning("Elasticidades: no hay suficientes columnas para graficar.")
+                st.warning("No hay suficientes columnas para graficar elasticidades.")
 
             # Curva Probabilidad vs Precio
             if "precio" in FEATURES:
@@ -103,18 +99,14 @@ def main():
                 df_grid["precio"] = precio_grid
                 X_grid = sm.add_constant(df_grid[FEATURES], has_constant="add")
                 prob_grid = model.predict(X_grid)
-                prob_df = pd.DataFrame({"P(Y=1)": prob_grid}, index=precio_grid)
-                st.line_chart(prob_df)
+                st.line_chart(pd.DataFrame({"P(Y=1)": prob_grid}, index=precio_grid))
 
             # Simulación interactiva
             st.subheader("Simulación interactiva")
-            sim_vals = {}
-            for feat in FEATURES:
-                mi, ma = float(df[feat].min()), float(df[feat].max())
-                sim_vals[feat] = st.slider(f"{feat}", mi, ma, float(df[feat].median()))
+            sim_vals = {feat: st.slider(feat, float(df[feat].min()), float(df[feat].max()), float(df[feat].median()))
+                        for feat in FEATURES}
             Xnew = [1.0] + [sim_vals[feat] for feat in FEATURES]
-            prob = model.predict([Xnew])[0]
-            st.write(f"**P(Y=1)** = {prob:.3f}")
+            st.write(f"**P(Y=1)** = {model.predict([Xnew])[0]:.3f}")
 
         elif model_type == "OLS":
             X = sm.add_constant(df[FEATURES])
@@ -134,20 +126,13 @@ def main():
             st.markdown("#### Probabilidades (dataset completo)")
             prob_df = predict_mnl(model, df, FEATURES)
             st.dataframe(prob_df)
-
-            # Gráfico de probabilidades
             st.subheader("Probabilidades (gráfico)")
             st.line_chart(prob_df)
-
-            # Simulación MNL
             st.subheader("Simulación interactiva MNL")
-            sim_vals = {}
-            for feat in FEATURES:
-                mi, ma = float(df[feat].min()), float(df[feat].max())
-                sim_vals[feat] = st.slider(f"{feat}", mi, ma, float(df[feat].median()))
-            df_new = pd.DataFrame([{feat: sim_vals[feat] for feat in FEATURES}])
-            sim_probs = predict_mnl(model, df_new, FEATURES)
-            st.dataframe(sim_probs)
+            sim_vals = {feat: st.slider(feat, float(df[feat].min()), float(df[feat].max()), float(df[feat].median()))
+                        for feat in FEATURES}
+            sim_df = pd.DataFrame([sim_vals])
+            st.dataframe(predict_mnl(model, sim_df, FEATURES))
 
         st.sidebar.markdown(f"Paso 2: Econometría {'✅' if model else '⬜'}")
 
@@ -157,6 +142,7 @@ def main():
     # --- 3. Deliberación ---
     with tabs[2]:
         st.header("3. Deliberación epistémica")
+        # preparamos motor (no estrictamente necesario para EEE)
         if "engine" not in st.session_state:
             st.session_state.engine = DeliberationEngine()
 
@@ -169,10 +155,9 @@ def main():
             if subqs:
                 st.success(f"{len(subqs)} subpreguntas registradas.")
 
-        # Aseguramos que siempre existe tracker en el engine
-        tracker = getattr(st.session_state.engine, "tracker", {"steps": []})
+        # ahora sí, sacamos el historial del EpistemicNavigator
+        tracker = EpistemicNavigator.get_tracker()  
         steps = tracker.get("steps", [])
-
         if steps:
             st.subheader("Métricas Epistémicas (EEE)")
             metrics = compute_eee(tracker, max_steps=10)
@@ -197,9 +182,9 @@ def main():
         if st.button("Generar informe"):
             report_bytes = build_report(df, model, st.session_state.engine, diagnostics)
             is_pdf = report_bytes[:4] == b"%PDF"
-            filename = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
+            fn = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
             mime = "application/pdf" if is_pdf else "text/plain"
-            st.download_button("📥 Descargar Informe", data=report_bytes, file_name=filename, mime=mime)
+            st.download_button("📥 Descargar Informe", data=report_bytes, file_name=fn, mime=mime)
             st.success("Informe listo para descargar.")
         st.sidebar.markdown("Paso 5: Informe 📄")
 

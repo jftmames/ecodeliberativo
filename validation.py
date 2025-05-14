@@ -1,45 +1,63 @@
-# validation.py
-
 import pandas as pd
+import numpy as np
 import statsmodels.api as sm
-from statsmodels.stats.outliers_influence import variance_inflation_factor
-from statsmodels.stats.diagnostic import het_breuschpagan
+from statsmodels.stats.stattools import durbin_watson
 
-def check_multicollinearity(df: pd.DataFrame, features: list) -> pd.DataFrame:
-    X = sm.add_constant(df[features])
-    vif_data = []
-    for i, feature in enumerate(X.columns):
-        vif = variance_inflation_factor(X.values, i)
-        vif_data.append({"feature": feature, "VIF": vif})
-    return pd.DataFrame(vif_data)
-
-def check_heteroscedasticity(model):
+def check_model_diagnostics(df: pd.DataFrame, model, features: list[str]) -> dict:
     """
-    Aplica Breusch–Pagan si el modelo tiene residuales continuos.
-    """
-    try:
-        resid = model.resid
-        exog = model.model.exog
-    except Exception:
-        return {"error": "Test no disponible para este tipo de modelo"}
-    lm_stat, lm_pvalue, f_stat, f_pvalue = het_breuschpagan(resid, exog)
-    return {
-        "lm_stat": lm_stat,
-        "lm_pvalue": lm_pvalue,
-        "f_stat": f_stat,
-        "f_pvalue": f_pvalue
-    }
+    Genera un diccionario con diagnósticos clave del modelo estimado.
 
-def check_model_diagnostics(df: pd.DataFrame, model, features: list) -> dict:
-    diagnostics = {}
-    diagnostics["VIF"] = check_multicollinearity(df, features).to_dict(orient="records")
-    diagnostics["heteroscedasticity"] = check_heteroscedasticity(model)
-    # R-squared / pseudo-R²
-    if hasattr(model, 'rsquared'):
-        diagnostics["r_squared"] = model.rsquared
-    elif hasattr(model, 'prsquared'):
-        diagnostics["pseudo_r_squared"] = model.prsquared
+    Para Logit:
+      - llf: Log-likelihood del modelo
+      - llnull: Log-likelihood del modelo nulo
+      - pseudo_R2: R2 de McFadden
+      - AIC, BIC: criterios de información
+    Para OLS:
+      - R2, R2 ajustado
+      - F estadístico y su p-valor
+      - Durbin-Watson: autocorrelación de residuos
+    Para MNL (MNLogit):
+      - llf: Log-likelihood del modelo
+      - no_of_params: número de parámetros estimados
+      - AIC, BIC
+
+    """
+    res = {}
+    model_name = type(model).__name__
+    # Logit diagnostics
+    if hasattr(model, 'llf') and hasattr(model, 'llnull'):
+        llf = model.llf
+        llnull = model.llnull
+        pseudo_r2 = 1 - (llf / llnull) if llnull != 0 else np.nan
+        res.update({
+            'Model': 'Logit',
+            'llf': llf,
+            'llnull': llnull,
+            'pseudo_R2': pseudo_r2,
+            'AIC': model.aic,
+            'BIC': model.bic,
+        })
+    # OLS diagnostics
+    elif hasattr(model, 'rsquared'):
+        dw = durbin_watson(model.resid)
+        res.update({
+            'Model': 'OLS',
+            'R2': model.rsquared,
+            'R2_adj': model.rsquared_adj,
+            'F_statistic': model.fvalue,
+            'F_pvalue': model.f_pvalue,
+            'Durbin_Watson': dw,
+        })
+    # MNLogit diagnostics
+    elif hasattr(model, 'model') and hasattr(model, 'llf'):
+        # identificado como discrete_model.MNLogitResults
+        res.update({
+            'Model': 'MNL',
+            'llf': model.llf,
+            'no_of_params': int(model.df_model) + int(model.k_constant),
+            'AIC': model.aic,
+            'BIC': model.bic,
+        })
     else:
-        diagnostics["r_squared"] = None
-    return diagnostics
-
+        res['error'] = f"Modelo no reconocido: {model_name}"
+    return res

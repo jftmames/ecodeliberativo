@@ -1,186 +1,161 @@
 # ui.py
-
 import streamlit as st
-import statsmodels.api as sm
 import pandas as pd
+import numpy as np
 
-from data_loader import generate_synthetic_data, load_csv
-from econometrics import fit_logit, fit_ols, summarize_model, compute_average_probability
-from mnl import fit_mnl, summarize_mnl, predict_mnl
+from mnl import fit_mnl, predict_mnl
 from elasticities import compute_elasticities
+from deliberation_engine import DeliberationEngine
+from navigator import EpistemicNavigator
 from validation import check_model_diagnostics
-from visualizations import plot_choice_probabilities, plot_elasticities
-from epistemic_metrics import compute_eee
-from navigator import display_navigation
-from deliberation_engine import InquiryEngine, ReasoningTracker
-from report_generator import build_report
+from report_generator import build_report, export_pdf
+from statsmodels.discrete.discrete_model import Logit
+from statsmodels.regression.linear_model import OLS
 
-# --- Configuración de la página ---
-st.set_page_config(page_title="Simulador Econ-Delib", layout="wide")
-st.title("Simulador Econométrico-Deliberativo")
-st.markdown("MVP modular para universidades y consultores.")
+def load_example_data():
+    # Simula un dataset de ejemplo
+    np.random.seed(42)
+    n = 200
+    df = pd.DataFrame({
+        "precio": np.random.uniform(1, 10, n),
+        "ingreso": np.random.uniform(20, 100, n),
+        "edad": np.random.randint(18, 70, n),
+    })
+    # Genera Y binaria con un logit simple
+    X = np.column_stack([np.ones(n), df["precio"], df["ingreso"], df["edad"]])
+    beta = np.array([-1.0, -0.5, 0.03, 0.01])
+    logits = 1 / (1 + np.exp(-X.dot(beta)))
+    df["Y"] = np.random.binomial(1, logits)
+    return df
 
-# Variables globales
-FEATURES = ["precio", "ingreso", "edad"]
+def fit_logit(df, features):
+    X = df[features]
+    X = st.session_state.const_column = sm.add_constant(X)
+    y = df["Y"]
+    model = Logit(y, X).fit(disp=False)
+    return model
 
-# Inicializar session_state
-for key, default in [
-    ("df", None),
-    ("model", None),
-    ("model_type", None),
-    ("probs_df", None),
-    ("diagnostics", None),
-    ("elasticities", None),
-    ("subquestions", []),
-]:
-    if key not in st.session_state:
-        st.session_state[key] = default
-if "engine" not in st.session_state:
-    st.session_state.engine = InquiryEngine()
-if "tracker" not in st.session_state:
-    st.session_state.tracker = ReasoningTracker()
+def main():
+    st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
+    st.title("Simulador Econométrico-Deliberativo para Decisiones de Consumo")
 
-# Sidebar: fases
-phase = st.sidebar.radio("Fase:", [
-    "1. Datos",
-    "2. Econometría",
-    "3. Deliberación",
-    "4. Informe"
-])
+    # --- Selector de rol ---
+    role = st.sidebar.selectbox("Modo de uso", ["Docente", "Consultor"])
 
-# -------------------------
-# Fase 1: Datos
-# -------------------------
-if phase == "1. Datos":
-    st.header("1. Datos de ejemplo / carga CSV")
-    source = st.radio("Origen de datos", ["Ejemplo", "Subir CSV"])
-    if source == "Ejemplo":
-        st.session_state.df = generate_synthetic_data()
+    # --- 1. Datos ---
+    st.header("1. Datos")
+    uploaded = st.file_uploader("Sube un CSV con tus datos (debe incluir Y = elección)", type="csv")
+    if uploaded:
+        df = pd.read_csv(uploaded)
     else:
-        uploaded = st.file_uploader("Sube un CSV", type="csv")
-        if uploaded:
-            st.session_state.df = load_csv(uploaded)
-        else:
-            st.stop()
-    st.write("Vista previa de datos:")
-    st.dataframe(st.session_state.df.head())
-    st.write(f"Total registros: **{len(st.session_state.df)}**")
+        st.info("Usando datos de ejemplo.")
+        df = load_example_data()
 
-# -------------------------
-# Fase 2: Econometría
-# -------------------------
-elif phase == "2. Econometría":
-    st.header("2. Módulo Econométrico")
-    if st.session_state.df is None:
-        st.warning("Completa primero la Fase 1 (Datos).")
+    st.write("Primeras filas de los datos:", df.head())
+
+    # --- Selección de variables ---
+    FEATURES = st.multiselect("Selecciona variables explicativas:", [c for c in df.columns if c != "Y"])
+    if not FEATURES:
+        st.warning("Debes seleccionar al menos una variable explicativa.")
         st.stop()
-    df = st.session_state.df
-    st.dataframe(df.head())
 
-    st.session_state.model_type = st.selectbox("Modelo econométrico", ["Logit", "OLS", "MNL"])
-    if st.button("Ajustar modelo"):
+    # --- 2. Econometría ---
+    st.header("2. Econometría")
+    model_type = st.radio("Elige modelo:", ["Logit", "OLS", "MNL"])
+
+    if model_type == "Logit":
         # Ajuste
-        if st.session_state.model_type == "Logit":
-            model = fit_logit(df, FEATURES, "eleccion")
-            st.session_state.probs_df = None
-        elif st.session_state.model_type == "OLS":
-            model = fit_ols(df, FEATURES, "eleccion")
-            st.session_state.probs_df = None
-        else:
-            model = fit_mnl(df, FEATURES, "eleccion")
-            st.session_state.probs_df = predict_mnl(model, df, FEATURES)
-        st.session_state.model = model
+        model = fit_logit(df, FEATURES)
 
-        # Mostrar resumen
-        summary = (
-            summarize_model(model)
-            if st.session_state.model_type != "MNL"
-            else summarize_mnl(model)
-        )
-        st.subheader("Resumen del modelo")
-        st.text(summary)
+        # Mostrar fórmula Logit
+        st.markdown("### Modelo Logit estimado")
+        terms = " + ".join([f"β₍{i+1}₎·{FEATURES[i]}" for i in range(len(FEATURES))])
+        formula = f"P(Y=1|X) = 1 / (1 + exp(-[β₀ + {terms}]))"
+        st.latex(formula)
 
-        # Gráficas de probabilidades
-        if st.session_state.model_type == "Logit":
-            probs_df = pd.DataFrame({"prob": model.predict(sm.add_constant(df[FEATURES]))})
-            fig = plot_choice_probabilities(probs_df)
-            st.pyplot(fig)
-        elif st.session_state.model_type == "MNL":
-            fig = plot_choice_probabilities(st.session_state.probs_df)
-            st.pyplot(fig)
+        # Pasos de estimación
+        with st.expander("Ver pasos de estimación"):
+            st.write("1. Se crea la matriz de regresores X (incluye constante).")
+            st.write(f"2. Variables: {', '.join(FEATURES)}.")
+            st.write("3. Se ajusta por máxima verosimilitud el modelo Logit.")
 
-        # Elasticidades (solo Logit)
-        if st.session_state.model_type == "Logit":
-            elas = compute_elasticities(
-                model, df, FEATURES, "Logit"
-            )
-            st.session_state.elasticities = elas
-            fig2 = plot_elasticities(elas)
-            st.subheader("Elasticidades (Logit)")
-            st.pyplot(fig2)
+        # Tabla de coeficientes e interpretación
+        coefs = model.params.reset_index()
+        coefs.columns = ["Variable", "Coeficiente"]
+        coefs["p-valor"] = model.pvalues.values
+        interpretaciones = []
+        for coef in coefs["Coeficiente"]:
+            signo = "incrementa" if coef > 0 else "reduce"
+            interpretaciones.append(f"A {signo} la probabilidad de elección.")
+        coefs["Interpretación"] = interpretaciones
 
-        # Diagnósticos
-        diag = check_model_diagnostics(df, model, FEATURES)
-        st.session_state.diagnostics = diag
-        st.subheader("Diagnósticos econométricos")
-        st.json(diag)
+        st.markdown("#### Resultados del ajuste")
+        st.dataframe(coefs)
 
-# -------------------------
-# Fase 3: Deliberación
-# -------------------------
-elif phase == "3. Deliberación":
-    st.header("3. Módulo de Deliberación")
+        # Elasticidades
+        st.subheader("Elasticidades")
+        elasts = compute_elasticities(model, df, FEATURES)
+        st.table(elasts)
+
+    elif model_type == "OLS":
+        # Ajuste OLS
+        X = sm.add_constant(df[FEATURES])
+        y = df["Y"]
+        model = OLS(y, X).fit()
+
+        st.markdown("### Modelo OLS estimado")
+        terms = " + ".join(FEATURES)
+        formula = f"Y = β₀ + {terms}"
+        st.latex(formula)
+
+        with st.expander("Ver pasos de estimación"):
+            st.write("1. Matriz X con constante.")
+            st.write(f"2. Variables: {', '.join(FEATURES)}.")
+            st.write("3. Ajuste por Mínimos Cuadrados Ordinarios.")
+
+        coefs = model.params.reset_index()
+        coefs.columns = ["Variable", "Coeficiente"]
+        coefs["p-valor"] = model.pvalues.values
+        interpretaciones = []
+        for coef in coefs["Coeficiente"]:
+            signo = "incrementa" if coef > 0 else "reduce"
+            interpretaciones.append(f"A {signo} el valor esperado de Y.")
+        coefs["Interpretación"] = interpretaciones
+
+        st.markdown("#### Resultados del ajuste")
+        st.dataframe(coefs)
+
+    else:  # MNL
+        st.info("Modelo MNL:")
+        model = fit_mnl(df, FEATURES)
+        probs = predict_mnl(model, df, FEATURES)
+        st.markdown("#### Probabilidades predichas por categoría")
+        st.dataframe(probs)
+
+    # --- 3. Deliberación ---
+    st.header("3. Deliberación epistémica")
+    if "engine" not in st.session_state:
+        st.session_state.engine = DeliberationEngine()
     prompt = st.text_input("Describe el análisis que quieres realizar:")
-    if st.button("Generar subpreguntas"):
-        subs = st.session_state.engine.generate_subquestions(prompt)
-        st.session_state.subquestions = subs
-        st.session_state.tracker = ReasoningTracker()
+    if prompt:
+        subqs = st.session_state.engine.generate_subquestions(prompt, FEATURES)
+        st.subheader("Subpreguntas generadas")
+        for i, q in enumerate(subqs, 1):
+            ans = st.text_input(f"{i}. {q}")
+            EpistemicNavigator.record(q, ans)
+        st.markdown(f"**{len(subqs)}** subpreguntas generadas y registradas.")
 
-    if st.session_state.subquestions:
-        st.markdown("**Responde a cada subpregunta:**")
-        for i, q in enumerate(st.session_state.subquestions):
-            st.text_area(label=f"{i+1}. {q}", key=f"ans_{i}", height=80)
-        if st.button("Registrar respuestas y calcular EEE"):
-            for i, q in enumerate(st.session_state.subquestions):
-                ans = st.session_state.get(f"ans_{i}", "").strip()
-                st.session_state.tracker.add_step(q, ans)
-            eee_metrics = compute_eee(
-                st.session_state.tracker.to_json(),
-                max_steps=len(st.session_state.subquestions)
-            )
-            st.subheader("Registro de razonamiento")
-            st.json(st.session_state.tracker.to_json())
-            st.subheader("Métricas epistémicas (EEE)")
-            st.json(eee_metrics)
-            display_navigation(st.session_state.tracker.to_json())
+    # --- 4. Validación ---
+    st.header("4. Diagnóstico de modelo")
+    diagnostics = check_model_diagnostics(df, model, FEATURES)
+    st.json(diagnostics)
 
-# -------------------------
-# Fase 4: Informe
-# -------------------------
-elif phase == "4. Informe":
-    st.header("4. Generar Informe")
-    if st.session_state.df is None or st.session_state.model is None:
-        st.warning("Completa las fases 1 y 2 antes de generar el informe.")
-        st.stop()
-    data_summary = (
-        f"Dataset: {len(st.session_state.df)} filas, variables: "
-        f"{', '.join(st.session_state.df.columns)}"
-    )
-    model_name = st.session_state.model_type
-    model_summary = (
-        summarize_model(st.session_state.model)
-        if model_name != "MNL"
-        else summarize_mnl(st.session_state.model)
-    )
-    model_summaries = {model_name: model_summary}
-    reasoning_log = (
-        st.session_state.tracker.to_json()
-        if st.session_state.tracker.log else {}
-    )
-    html = build_report(data_summary, model_summaries, reasoning_log)
-    st.download_button("Descargar informe (HTML)", html, file_name="informe.html")
+    # --- 5. Informe ---
+    st.header("5. Informe final")
+    if st.button("Generar informe PDF"):
+        report = build_report(df, model, st.session_state.engine, diagnostics)
+        export_pdf(report, "informe_simulador.pdf")
+        st.success("Informe generado: informe_simulador.pdf")
 
-# Pie de página
-st.sidebar.markdown("---")
-st.sidebar.markdown("© 2025 Simulador Econ-Delib")
-
+if __name__ == "__main__":
+    main()

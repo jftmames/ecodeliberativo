@@ -1,19 +1,35 @@
+# elasticities.py
+
 import pandas as pd
 import numpy as np
+import statsmodels.api as sm
+from typing import List
 
-def compute_elasticities(model, df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
+def compute_elasticities(model, df: pd.DataFrame, features: List[str]) -> pd.DataFrame:
     """
-    Calcula elasticidades puntuales promedio para un modelo Logit:
-      Elasticidad_j = β_j * x̄_j * p̄ * (1 - p̄)
-    donde x̄_j es la media de la variable j y p̄ la probabilidad media.
+    Calcula elasticidades puntuales promedio para un modelo Logit.
+    
+    Para cada variable x_k:
+      E_i,k = β_k * x_{i,k} * p_i * (1 - p_i)
+    y se promedia sobre i.
+    
+    Devuelve un DataFrame con columnas ["Variable", "Elasticidad"].
     """
-    # predicciones y probabilidad media
-    p = model.predict()
-    p_bar = np.mean(p)
-    rows = []
-    for feat in features:
-        beta_j = model.params.get(feat, 0.0)
-        x_bar = df[feat].mean()
-        elas = beta_j * x_bar * p_bar * (1 - p_bar)
-        rows.append({"Variable": feat, "Elasticidad": elas})
-    return pd.DataFrame(rows)
+    # Reconstruimos la matriz de exógenas con constante
+    X = sm.add_constant(df[features], has_constant="add")
+    # Probabilidades ajustadas p_i
+    p = model.predict(X)
+    # Coeficientes β_k (excluimos const)
+    params = model.params
+
+    elasticities = []
+    for k in features:
+        beta_k = params.get(k, 0.0)
+        x_k = df[k].astype(float)
+        # Elasticidad puntual
+        e_ik = beta_k * x_k * p * (1 - p)
+        # Elasticidad promedio
+        E_k = e_ik.mean()
+        elasticities.append({"Variable": k, "Elasticidad": E_k})
+
+    return pd.DataFrame(elasticities)

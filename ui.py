@@ -89,9 +89,17 @@ def main():
 
             # Gráfico de elasticidades con st.bar_chart
             st.subheader("Elasticidades de la demanda")
-            elas_df = compute_elasticities(model, df, FEATURES)
-            elas_df = elas_df.set_index("Variable")["Elasticidad"]
-            st.bar_chart(elas_df)
+            elas_raw = compute_elasticities(model, df, FEATURES)
+
+            # Normalizamos a Series, según la estructura de salida
+            if isinstance(elas_raw, pd.DataFrame) and "Variable" in elas_raw.columns:
+                elas_series = elas_raw.set_index("Variable")["Elasticidad"]
+            elif isinstance(elas_raw, pd.Series):
+                elas_series = elas_raw
+            else:
+                # si viene DataFrame con una columna de elasticidad sin Variable
+                elas_series = elas_raw.iloc[:, 0]
+            st.bar_chart(elas_series)
 
             # Curva logística con st.line_chart
             st.subheader("Curva logística")
@@ -104,10 +112,7 @@ def main():
                 Xnew[var_curve] = v
                 Xnew = sm.add_constant(Xnew)
                 probs.append(model.predict(Xnew)[0])
-            curve_df = pd.DataFrame({
-                var_curve: slider_vals,
-                "P(Y=1)": probs
-            }).set_index(var_curve)
+            curve_df = pd.DataFrame({var_curve: slider_vals, "P(Y=1)": probs}).set_index(var_curve)
             st.line_chart(curve_df)
 
         elif model_type == "OLS":
@@ -127,7 +132,6 @@ def main():
             model = fit_mnl(df, FEATURES)
             st.markdown("#### Probabilidades predichas")
             probs_df = predict_mnl(model, df, FEATURES)
-
             idx = st.slider("Índice de observación", 0, len(probs_df) - 1, 0)
             obs_probs = probs_df.iloc[idx]
             obs_probs.name = "P"
@@ -141,7 +145,7 @@ def main():
     # --- 3. Deliberación ---
     with tabs[2]:
         st.header("3. Deliberación epistémica")
-        if 'engine' not in st.session_state:
+        if "engine" not in st.session_state:
             st.session_state.engine = DeliberationEngine()
         prompt = st.text_input("Describe el análisis que quieres realizar:")
         if prompt:

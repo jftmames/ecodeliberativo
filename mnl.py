@@ -1,6 +1,7 @@
 # mnl.py
 
 import pandas as pd
+import numpy as np
 import statsmodels.api as sm
 from statsmodels.discrete.discrete_model import MNLogit
 
@@ -23,7 +24,14 @@ def predict_mnl(model, df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     """
     # Asegurarnos de que la constante está incluida
     X = sm.add_constant(df[features], has_constant="add")
-    # model.predict espera un array 2D, con misma orden de columnas que en fit
+    # Obtenemos la matriz de probabilidades (n_obs × n_categories)
     probs = model.predict(X)
-    # `model.model.endog_names` contiene los nombres de las alternativas
-    return pd.DataFrame(probs, columns=model.model.endog_names)
+
+    # Determinar las categorías a partir del endogénico usado en el modelo
+    # model.model.endog es un array con valores de Y
+    categories = np.unique(model.model.endog)
+    # Crear nombres para las columnas
+    col_names = [f"P(Y={cat})" for cat in categories]
+
+    # Finalmente devolvemos el DataFrame con las probabilidades y nombres adecuados
+    return pd.DataFrame(probs, columns=col_names)

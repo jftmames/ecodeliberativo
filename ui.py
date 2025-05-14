@@ -40,7 +40,7 @@ def main():
     role = st.sidebar.selectbox("", ["Docente", "Consultor"])
     tabs = st.tabs(["1. Datos", "2. Econometría", "3. Deliberación", "4. Diagnóstico", "5. Informe"])
 
-    # --- 1. Datos ---
+    # 1. Datos
     with tabs[0]:
         st.header("1. Datos")
         uploaded = st.file_uploader("Sube un CSV con tus datos (incluye columna Y)", type="csv")
@@ -58,7 +58,7 @@ def main():
     if not FEATURES:
         return
 
-    # --- 2. Econometría ---
+    # 2. Econometría
     with tabs[1]:
         st.header("2. Econometría")
         model_type = st.radio("Elige modelo:", ["Logit", "OLS", "MNL"])
@@ -121,7 +121,6 @@ def main():
             st.dataframe(coefs)
 
         else:  # MNL
-            # Preparamos X e y
             X = sm.add_constant(df[FEATURES])
             y = df["Y"].astype(int)
             model = MNLogit(y, X).fit(disp=False)
@@ -150,24 +149,42 @@ def main():
     if model is None:
         return
 
-    # --- 3. Deliberación ---
+    # 3. Deliberación
     with tabs[2]:
         st.header("3. Deliberación epistémica")
 
+        # Inicializamos motor
         if "engine" not in st.session_state:
             st.session_state.engine = DeliberationEngine()
+        # También nuestro fallback local
+        if "epi_steps" not in st.session_state:
+            st.session_state.epi_steps = []
 
         prompt = st.text_input("Describe el análisis que quieres realizar:")
         if prompt:
             subqs = st.session_state.engine.generate_subquestions(prompt, FEATURES)
             for i, q in enumerate(subqs, 1):
                 ans = st.text_input(f"{i}. {q}", key=f"ans_{i}")
+                # Registramos en navigator
                 EpistemicNavigator.record(q, ans)
+                # Y también en nuestro fallback local
+                st.session_state.epi_steps.append({
+                    "question": q,
+                    "answer": ans,
+                    "metadata": {}
+                })
             if subqs:
                 st.success(f"{len(subqs)} subpreguntas registradas.")
 
-        # Obtenemos el historial directamente
-        tracker = EpistemicNavigator.get_tracker()
+        # Recuperamos el tracker
+        tracker = {}
+        if hasattr(EpistemicNavigator, "get_tracker"):
+            tracker = EpistemicNavigator.get_tracker()
+        elif hasattr(EpistemicNavigator, "get_steps"):
+            tracker = {"steps": EpistemicNavigator.get_steps()}
+        else:
+            tracker = {"steps": st.session_state.epi_steps}
+
         steps = tracker.get("steps", [])
         if steps:
             st.subheader("Métricas Epistémicas (EEE)")
@@ -180,14 +197,14 @@ def main():
 
         st.sidebar.markdown("**Paso 3:** Deliberación ⚙️")
 
-    # --- 4. Diagnóstico ---
+    # 4. Diagnóstico
     with tabs[3]:
         st.header("4. Diagnóstico del modelo")
         diagnostics = check_model_diagnostics(df, model, FEATURES)
         st.json(diagnostics)
         st.sidebar.markdown("**Paso 4:** Diagnóstico ✅")
 
-    # --- 5. Informe ---
+    # 5. Informe
     with tabs[4]:
         st.header("5. Informe final")
         if st.button("Generar informe"):
@@ -195,9 +212,10 @@ def main():
             is_pdf = report_bytes[:4] == b"%PDF"
             filename = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
             mime = "application/pdf" if is_pdf else "text/plain"
-            st.download_button("📥 Descargar Informe", data=report_bytes, file_name=filename, mime=mime)
+            st.download_button("📥 Descargar Informe", report_bytes, filename, mime)
             st.success("Informe listo para descargar.")
         st.sidebar.markdown("**Paso 5:** Informe 📄")
 
 if __name__ == "__main__":
     main()
+

@@ -1,4 +1,3 @@
-# ui.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -9,12 +8,11 @@ from statsmodels.regression.linear_model import OLS
 
 from mnl import fit_mnl, predict_mnl
 from elasticities import compute_elasticities
-from deliberation_engine import DeliberationEngine, run_deliberacion
+from deliberation_engine import DeliberationEngine
 from navigator import EpistemicNavigator
 from epistemic_metrics import compute_eee
 from validation import check_model_diagnostics
 from report_generator import build_report
-
 
 def load_example_data():
     np.random.seed(42)
@@ -30,12 +28,10 @@ def load_example_data():
     df["Y"] = np.random.binomial(1, logits)
     return df
 
-
 def fit_logit(df: pd.DataFrame, features: list[str]):
     X = sm.add_constant(df[features])
     y = df["Y"]
     return Logit(y, X).fit(disp=False)
-
 
 def main():
     st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
@@ -54,7 +50,10 @@ def main():
             st.info("Usando datos de ejemplo.")
             df = load_example_data()
         st.write(df.head())
-        FEATURES = st.multiselect("Selecciona variables explicativas:", [c for c in df.columns if c != "Y"])
+        FEATURES = st.multiselect(
+            "Selecciona variables explicativas:",
+            [c for c in df.columns if c != "Y"]
+        )
         if not FEATURES:
             st.warning("Selecciona al menos una variable.")
         st.sidebar.markdown(f"Paso 1: Datos {'✅' if FEATURES else '⬜'}")
@@ -71,14 +70,14 @@ def main():
         if model_type == "Logit":
             model = fit_logit(df, FEATURES)
             st.markdown("### Modelo Logit estimado")
-            terms = " + ".join([f"β₍{i+1}₎·{FEATURES[i]}" for i in range(len(FEATURES))])
+            terms = " + ".join(f"β₍{i+1}₎·{FEATURES[i]}" for i in range(len(FEATURES)))
             st.latex(f"P(Y=1|X) = 1 / \\bigl(1 + e^{{-[β₀ + {terms}]}}\\bigr)")
 
             # Coeficientes
             coefs = model.params.reset_index()
             coefs.columns = ["Variable", "Coeficiente"]
             coefs["p-valor"] = model.pvalues.values
-            coefs["Interpretación"] = ["Incrementa" if c>0 else "Reduce" for c in coefs["Coeficiente"]]
+            coefs["Interpretación"] = ["Incrementa" if c > 0 else "Reduce" for c in coefs["Coeficiente"]]
             st.dataframe(coefs)
 
             # Elasticidades
@@ -88,15 +87,20 @@ def main():
 
             # Gráfico de elasticidades
             st.subheader("Elasticidades (gráfico)")
-            idx_col, val_col = "Variable", "Elasticidad"
-            chart_data = elas_df.set_index(idx_col)[val_col]
-            st.bar_chart(chart_data)
+            if {"Variable", "Elasticidad"}.issubset(elas_df.columns):
+                chart_data = elas_df.set_index("Variable")["Elasticidad"]
+                st.bar_chart(chart_data)
+            else:
+                st.info("No se pudo graficar elasticidades: columnas esperadas no encontradas.")
 
             # Curva Probabilidad vs Precio
             if "precio" in FEATURES:
                 st.subheader("Curva: Probabilidad vs Precio")
                 precio_grid = np.linspace(df["precio"].min(), df["precio"].max(), 100)
-                df_grid = pd.DataFrame({feat: df[feat].mean() for feat in FEATURES}, index=precio_grid)
+                df_grid = pd.DataFrame(
+                    {feat: df[feat].mean() for feat in FEATURES},
+                    index=precio_grid
+                )
                 df_grid["precio"] = precio_grid
                 X_grid = sm.add_constant(df_grid[FEATURES], has_constant="add")
                 prob_grid = model.predict(X_grid)
@@ -122,10 +126,10 @@ def main():
             coefs = model.params.reset_index()
             coefs.columns = ["Variable", "Coeficiente"]
             coefs["p-valor"] = model.pvalues.values
-            coefs["Interpretación"] = ["Incrementa" if c>0 else "Reduce" for c in coefs["Coeficiente"]]
+            coefs["Interpretación"] = ["Incrementa" if c > 0 else "Reduce" for c in coefs["Coeficiente"]]
             st.dataframe(coefs)
 
-        else:
+        else:  # MNL
             st.info("Modelo MNL seleccionado")
             model = fit_mnl(df, FEATURES)
             st.markdown("#### Probabilidades (dataset completo)")
@@ -156,9 +160,10 @@ def main():
         st.header("3. Deliberación epistémica")
         if "engine" not in st.session_state:
             st.session_state.engine = DeliberationEngine()
+
         prompt = st.text_input("Describe el análisis que quieres realizar:")
         if prompt:
-            subqs = run_deliberacion(prompt, FEATURES)
+            subqs = st.session_state.engine.generate_subquestions(prompt, FEATURES)
             for i, q in enumerate(subqs, 1):
                 ans = st.text_input(f"{i}. {q}", key=f"ans_{i}")
                 EpistemicNavigator.record(q, ans)
@@ -170,9 +175,9 @@ def main():
         if steps:
             st.subheader("Métricas Epistémicas (EEE)")
             metrics = compute_eee(tracker, max_steps=10)
-            df_eee = pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"])  
-            df_eee.index.name = "Dimensión"
-            st.table(df_eee)
+            eeedf = pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"])
+            eeedf.index.name = "Dimensión"
+            st.table(eeedf)
         else:
             st.info("Registra al menos una respuesta para ver las métricas EEE.")
 
@@ -189,14 +194,18 @@ def main():
     with tabs[4]:
         st.header("5. Informe final")
         if st.button("Generar informe"):
-            report_bytes = build_report(df, model, tracker, diagnostics)
+            report_bytes = build_report(df, model, st.session_state.engine, diagnostics)
             is_pdf = report_bytes[:4] == b"%PDF"
-            fname = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
+            filename = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
             mime = "application/pdf" if is_pdf else "text/plain"
-            st.download_button("📥 Descargar Informe", report_bytes, fname, mime)
+            st.download_button(
+                "📥 Descargar Informe",
+                data=report_bytes,
+                file_name=filename,
+                mime=mime
+            )
             st.success("Informe listo para descargar.")
         st.sidebar.markdown("Paso 5: Informe 📄")
-
 
 if __name__ == "__main__":
     main()

@@ -2,20 +2,17 @@ from typing import List
 
 class DeliberationEngine:
     """
-    Motor simple de generación de subpreguntas
-    basado en la lista de características.
+    Motor de generación de subpreguntas para guiar la investigación.
+    Usa heurísticas simples sobre el prompt y las variables seleccionadas.
     """
-
-    def __init__(self):
-        pass
-
     def generate_subquestions(self, prompt: str, features: List[str]) -> List[str]:
-        """
-        A partir de un prompt y las variables del modelo,
-        genera una subpregunta por cada variable:
-        Ej: "Analiza cómo {feat} influye en {prompt}"
-        """
         subqs = []
+        # preguntas sobre cada variable
         for feat in features:
-            subqs.append(f"¿Cómo afecta '{feat}' a {prompt.lower()}?")
+            subqs.append(
+                f"¿Cómo influye **{feat}** en la respuesta al prompt: '{prompt}'?"
+            )
+        # preguntas contextualizantes
+        subqs.append(f"¿Qué supuestos subyacentes consideras al abordar: '{prompt}'?")
+        subqs.append("¿Qué limitaciones metodológicas podrían afectar tu análisis?")
         return subqs

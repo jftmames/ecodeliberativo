@@ -6,12 +6,8 @@ import numpy as np
 
 def fit_mnl(df: pd.DataFrame, features: list[str], endog_name: str = "Y"):
     """
-    Ajusta un modelo de regresión logística multinomial (MNLogit).
-    - df: DataFrame con las variables explicativas y la variable dependiente.
-    - features: lista de nombres de columnas explicativas.
-    - endog_name: nombre de la columna dependiente (categorías).
+    Ajusta un modelo MNLogit.
     """
-    # Construye diseño con constante
     X = sm.add_constant(df[features], has_constant="add")
     y = df[endog_name]
     model = sm.MNLogit(y, X).fit(disp=False)
@@ -19,23 +15,23 @@ def fit_mnl(df: pd.DataFrame, features: list[str], endog_name: str = "Y"):
 
 def predict_mnl(model, df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     """
-    Dada la tabla de datos y el modelo entrenado, devuelve un DataFrame
-    n_obs × n_categorías con las probabilidades P(Y=cat).
+    Devuelve DataFrame n_obs × n_cats con las probabilidades P(Y=cat).
     """
-    # Reconstruye X con constante
+    # Reconstruye X como array NumPy
     X = sm.add_constant(df[features], has_constant="add")
-    # statsmodels MNLogit.predict regresa un array (n_obs, n_cats)
-    probs = model.predict(X)  # numpy array
+    X_mat = X.values  # <— aquí el truco
 
-    # Extraemos las categorías originales del endog en el modelo
-    # model.model.endog es el array de entrenamiento
+    # statsmodels MNLogit.predict admite ahora un array limpio
+    probs = model.predict(X_mat)  # shape (n_obs, n_cats) numpy array
+
+    # Extrae categorías únicas ordenadas
     cats = np.unique(model.model.endog)
     cats.sort()
 
-    # Nombramos columnas
+    # Nombra columnas
     col_names = [f"P(Y={cat})" for cat in cats]
 
-    # Construimos el DataFrame final
-    probs_df = pd.DataFrame(probs, columns=col_names, index=df.index)
+    # Construye DataFrame con mismo índice
+    probs_df = pd.DataFrame(probs, columns=col_names, index=df.index).astype(float)
 
     return probs_df

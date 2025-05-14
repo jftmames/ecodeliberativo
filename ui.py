@@ -11,7 +11,7 @@ from elasticities import compute_elasticities
 from deliberation_engine import DeliberationEngine
 from navigator import EpistemicNavigator
 from validation import check_model_diagnostics
-from report_generator import build_report  # build_report devuelve bytes (PDF o TXT)
+from report_generator import build_report  # ya no necesitamos export_pdf aquí
 
 def load_example_data():
     np.random.seed(42)
@@ -57,10 +57,7 @@ def main():
             st.info("Usando datos de ejemplo.")
             df = load_example_data()
         st.write(df.head())
-        FEATURES = st.multiselect(
-            "Selecciona variables explicativas:",
-            [c for c in df.columns if c != "Y"]
-        )
+        FEATURES = st.multiselect("Selecciona variables explicativas:", [c for c in df.columns if c != "Y"])
         if not FEATURES:
             st.warning("Selecciona al menos una variable.")
         st.sidebar.markdown(f"Paso 1: Datos {'✅' if FEATURES else '⬜'}")
@@ -78,42 +75,27 @@ def main():
             model = fit_logit(df, FEATURES)
             st.markdown("### Modelo Logit estimado")
             terms = " + ".join([f"β₍{i+1}₎·{FEATURES[i]}" for i in range(len(FEATURES))])
-            st.latex(f"P(Y=1|X) = 1 / (1 + e^(-[β₀ + {terms}]))")
-
-            # Coeficientes
+            st.latex(f"P(Y=1|X) = 1 / \\bigl(1 + e^{{-[β₀ + {terms}]}}\\bigr)")
             coefs = model.params.reset_index()
             coefs.columns = ["Variable", "Coeficiente"]
             coefs["p-valor"] = model.pvalues.values
-            coefs["Interpretación"] = ["Incrementa" if c > 0 else "Reduce" for c in coefs["Coeficiente"]]
+            coefs["Interpretación"] = ["Incrementa" if c>0 else "Reduce" for c in coefs["Coeficiente"]]
             st.dataframe(coefs)
+            st.subheader("Elasticidades")
+            st.table(compute_elasticities(model, df, FEATURES))
 
-            # Gráfico de elasticidades con st.bar_chart
-            st.subheader("Elasticidades de la demanda")
-            elas_raw = compute_elasticities(model, df, FEATURES)
-
-            # Normalizamos a Series, según la estructura de salida
-            if isinstance(elas_raw, pd.DataFrame) and "Variable" in elas_raw.columns:
-                elas_series = elas_raw.set_index("Variable")["Elasticidad"]
-            elif isinstance(elas_raw, pd.Series):
-                elas_series = elas_raw
-            else:
-                # si viene DataFrame con una columna de elasticidad sin Variable
-                elas_series = elas_raw.iloc[:, 0]
-            st.bar_chart(elas_series)
-
-            # Curva logística con st.line_chart
-            st.subheader("Curva logística")
-            var_curve = st.selectbox("Variable para explorar", FEATURES)
-            min_v, max_v = float(df[var_curve].min()), float(df[var_curve].max())
-            slider_vals = np.linspace(min_v, max_v, 100)
-            probs = []
-            for v in slider_vals:
-                Xnew = pd.DataFrame({f: [df[f].mean()] for f in FEATURES})
-                Xnew[var_curve] = v
-                Xnew = sm.add_constant(Xnew)
-                probs.append(model.predict(Xnew)[0])
-            curve_df = pd.DataFrame({var_curve: slider_vals, "P(Y=1)": probs}).set_index(var_curve)
-            st.line_chart(curve_df)
+            # Simulación interactiva
+            st.subheader("Simulación de probabilidades")
+            sim_vals = {}
+            for feat in FEATURES:
+                # asume numérico continuo
+                min_, max_ = float(df[feat].min()), float(df[feat].max())
+                sim_vals[feat] = st.slider(f"{feat}", min_, max_, float(df[feat].median()))
+            # construimos exógenas
+            Xnew = [1.0] + [sim_vals[feat] for feat in FEATURES]
+            # siempre en formato 2D: lista de listas
+            prob = model.predict([Xnew])[0]
+            st.write(f"**P(Y=1)** para esos valores: {prob:.3f}")
 
         elif model_type == "OLS":
             X = sm.add_constant(df[FEATURES])
@@ -124,18 +106,26 @@ def main():
             coefs = model.params.reset_index()
             coefs.columns = ["Variable", "Coeficiente"]
             coefs["p-valor"] = model.pvalues.values
-            coefs["Interpretación"] = ["Incrementa" if c > 0 else "Reduce" for c in coefs["Coeficiente"]]
+            coefs["Interpretación"] = ["Incrementa" if c>0 else "Reduce" for c in coefs["Coeficiente"]]
             st.dataframe(coefs)
 
-        else:
+        else:  # MNL
             st.info("Modelo MNL seleccionado")
             model = fit_mnl(df, FEATURES)
-            st.markdown("#### Probabilidades predichas")
-            probs_df = predict_mnl(model, df, FEATURES)
-            idx = st.slider("Índice de observación", 0, len(probs_df) - 1, 0)
-            obs_probs = probs_df.iloc[idx]
-            obs_probs.name = "P"
-            st.bar_chart(obs_probs)
+            st.markdown("#### Probabilidades predichas (todo el dataset)")
+            st.dataframe(predict_mnl(model, df, FEATURES))
+
+            # Simulación interactiva
+            st.subheader("Simulación de probabilidades MNL")
+            sim_vals = {}
+            for feat in FEATURES:
+                min_, max_ = float(df[feat].min()), float(df[feat].max())
+                sim_vals[feat] = st.slider(f"{feat}", min_, max_, float(df[feat].median()))
+            # un solo caso de prueba
+            df_new = pd.DataFrame([{feat: sim_vals[feat] for feat in FEATURES}])
+            probs = predict_mnl(model, df_new, FEATURES)
+            st.write("Probabilidades por alternativa:")
+            st.dataframe(probs)
 
         st.sidebar.markdown(f"Paso 2: Econometría {'✅' if model else '⬜'}")
 
@@ -145,15 +135,18 @@ def main():
     # --- 3. Deliberación ---
     with tabs[2]:
         st.header("3. Deliberación epistémica")
-        if "engine" not in st.session_state:
+        if 'engine' not in st.session_state:
             st.session_state.engine = DeliberationEngine()
         prompt = st.text_input("Describe el análisis que quieres realizar:")
         if prompt:
             subqs = st.session_state.engine.generate_subquestions(prompt, FEATURES)
+            answers = []
             for i, q in enumerate(subqs, 1):
                 a = st.text_input(f"{i}. {q}", key=f"ans_{i}")
+                answers.append(a)
                 EpistemicNavigator.record(q, a)
-            st.success(f"{len(subqs)} subpreguntas registradas.")
+            if any(answers):
+                st.success(f"{len(subqs)} subpreguntas registradas.")
         st.sidebar.markdown("Paso 3: Deliberación ⚙️")
 
     # --- 4. Diagnóstico ---
@@ -168,9 +161,12 @@ def main():
         st.header("5. Informe final")
         if st.button("Generar informe"):
             report_bytes = build_report(df, model, st.session_state.engine, diagnostics)
+
+            # Detectar si es PDF (encabezado %PDF) o texto plano
             is_pdf = report_bytes[:4] == b"%PDF"
             filename = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
             mime = "application/pdf" if is_pdf else "text/plain"
+
             st.download_button(
                 label="📥 Descargar Informe",
                 data=report_bytes,

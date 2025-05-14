@@ -3,23 +3,17 @@ import numpy as np
 
 def compute_elasticities(model, df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     """
-    Calcula elasticidades puntuales para un modelo logit binario:
-      e_j = β_j * x_j * (1 - p)
-    donde p = P(Y=1|X) en el punto medio de los datos.
-    Devuelve un DataFrame con columnas ['Variable', 'Elasticidad'].
+    Calcula elasticidades puntuales promedio para un modelo Logit:
+      Elasticidad_j = β_j * x̄_j * p̄ * (1 - p̄)
+    donde x̄_j es la media de la variable j y p̄ la probabilidad media.
     """
-    # Punto de evaluación: media de X
-    x0 = df[features].mean()
-    X0 = [1.0] + list(x0)
-    p0 = model.predict([X0])[0]
-    betas = model.params.values
-
+    # predicciones y probabilidad media
+    p = model.predict()
+    p_bar = np.mean(p)
     rows = []
-    # Ignoramos β0
-    for j, feat in enumerate(features, start=1):
-        βj = betas[j]
-        xj = x0[feat]
-        elasticidad = βj * xj * (1 - p0)
-        rows.append({"Variable": feat, "Elasticidad": elasticidad})
-
+    for feat in features:
+        beta_j = model.params.get(feat, 0.0)
+        x_bar = df[feat].mean()
+        elas = beta_j * x_bar * p_bar * (1 - p_bar)
+        rows.append({"Variable": feat, "Elasticidad": elas})
     return pd.DataFrame(rows)

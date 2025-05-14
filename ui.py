@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
-import plotly.express as px  # Para gráficos interactivos
 
 from statsmodels.discrete.discrete_model import Logit
 from statsmodels.regression.linear_model import OLS
@@ -88,20 +87,14 @@ def main():
             coefs["Interpretación"] = ["Incrementa" if c > 0 else "Reduce" for c in coefs["Coeficiente"]]
             st.dataframe(coefs)
 
-            # Gráfico de elasticidades
+            # Gráfico de elasticidades con st.bar_chart
             st.subheader("Elasticidades de la demanda")
             elas_df = compute_elasticities(model, df, FEATURES)
-            fig_elas = px.bar(
-                elas_df,
-                x="Variable",
-                y="Elasticidad",
-                title="Elasticidades (%)",
-                labels={"Elasticidad": "Elasticidad (%)"}
-            )
-            st.plotly_chart(fig_elas, use_container_width=True)
+            elas_df = elas_df.set_index("Variable")["Elasticidad"]
+            st.bar_chart(elas_df)
 
-            # Curva logística interactiva
-            st.subheader("Curva logística interactiva")
+            # Curva logística con st.line_chart
+            st.subheader("Curva logística")
             var_curve = st.selectbox("Variable para explorar", FEATURES)
             min_v, max_v = float(df[var_curve].min()), float(df[var_curve].max())
             slider_vals = np.linspace(min_v, max_v, 100)
@@ -111,13 +104,11 @@ def main():
                 Xnew[var_curve] = v
                 Xnew = sm.add_constant(Xnew)
                 probs.append(model.predict(Xnew)[0])
-            fig_curve = px.line(
-                x=slider_vals,
-                y=probs,
-                title=f"P(Y=1) vs {var_curve}",
-                labels={"x": var_curve, "y": "P(Y=1)"}
-            )
-            st.plotly_chart(fig_curve, use_container_width=True)
+            curve_df = pd.DataFrame({
+                var_curve: slider_vals,
+                "P(Y=1)": probs
+            }).set_index(var_curve)
+            st.line_chart(curve_df)
 
         elif model_type == "OLS":
             X = sm.add_constant(df[FEATURES])
@@ -137,16 +128,10 @@ def main():
             st.markdown("#### Probabilidades predichas")
             probs_df = predict_mnl(model, df, FEATURES)
 
-            # Interactivo: seleccionar observación
             idx = st.slider("Índice de observación", 0, len(probs_df) - 1, 0)
             obs_probs = probs_df.iloc[idx]
-            fig_probs = px.bar(
-                x=obs_probs.index,
-                y=obs_probs.values,
-                title=f"Probabilidades predichas (obs. {idx})",
-                labels={"x": "Alternativa", "y": "P"}
-            )
-            st.plotly_chart(fig_probs, use_container_width=True)
+            obs_probs.name = "P"
+            st.bar_chart(obs_probs)
 
         st.sidebar.markdown(f"Paso 2: Econometría {'✅' if model else '⬜'}")
 
@@ -161,13 +146,10 @@ def main():
         prompt = st.text_input("Describe el análisis que quieres realizar:")
         if prompt:
             subqs = st.session_state.engine.generate_subquestions(prompt, FEATURES)
-            answers = []
             for i, q in enumerate(subqs, 1):
                 a = st.text_input(f"{i}. {q}", key=f"ans_{i}")
-                answers.append(a)
                 EpistemicNavigator.record(q, a)
-            if answers:
-                st.success(f"{len(subqs)} subpreguntas registradas.")
+            st.success(f"{len(subqs)} subpreguntas registradas.")
         st.sidebar.markdown("Paso 3: Deliberación ⚙️")
 
     # --- 4. Diagnóstico ---
@@ -182,12 +164,9 @@ def main():
         st.header("5. Informe final")
         if st.button("Generar informe"):
             report_bytes = build_report(df, model, st.session_state.engine, diagnostics)
-
-            # Detectar tipo (PDF o TXT) y ofrecer descarga
             is_pdf = report_bytes[:4] == b"%PDF"
             filename = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
             mime = "application/pdf" if is_pdf else "text/plain"
-
             st.download_button(
                 label="📥 Descargar Informe",
                 data=report_bytes,

@@ -1,27 +1,18 @@
-import pandas as pd
+# validation.py
 
-def check_model_diagnostics(df: pd.DataFrame, model, features: list[str]) -> dict:
+def check_model_diagnostics(df, model, features):
     """
-    Devuelve métricas básicas según tipo de modelo:
-     - Logit: AIC, BIC, Pseudo R²
-     - OLS: R², AIC, BIC
-     - MNL: AIC, BIC
+    Recoge métricas clave de diagnóstico: R2, pseudo-R2, AIC, BIC, etc.
     """
-    name = type(model).__name__.lower()
-    diag = {}
-
-    if "logit" in name:
-        diag["AIC"] = model.aic
-        diag["BIC"] = model.bic
-        diag["Pseudo R2"] = model.prsquared
-    elif "ols" in name:
-        diag["R2"] = model.rsquared
-        diag["AIC"] = model.aic
-        diag["BIC"] = model.bic
-    elif "mnlogit" in name or "multinomial" in name:
-        diag["AIC"] = model.aic
-        diag["BIC"] = model.bic
-    else:
-        diag["Mensaje"] = "Modelo no reconocido para diagnóstico automático."
-
-    return diag
+    diagnostics = {}
+    # Si es OLS
+    if hasattr(model, 'rsquared'):
+        diagnostics["R_squared"] = model.rsquared
+        diagnostics["Adj_R_squared"] = model.rsquared_adj
+    # Si es Logit o MNLogit
+    if hasattr(model, 'prsquared'):
+        diagnostics["Pseudo_R_squared"] = model.prsquared
+    # Ambos comparten
+    diagnostics["AIC"] = model.aic
+    diagnostics["BIC"] = model.bic
+    return diagnostics

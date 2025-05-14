@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
+import plotly.express as px
 
 from statsmodels.discrete.discrete_model import Logit
 from statsmodels.regression.linear_model import OLS
@@ -76,24 +77,54 @@ def main():
             st.markdown("### Modelo Logit estimado")
             terms = " + ".join([f"β₍{i+1}₎·{FEATURES[i]}" for i in range(len(FEATURES))])
             st.latex(f"P(Y=1|X) = 1 / \\bigl(1 + e^{{-[β₀ + {terms}]}}\\bigr)")
+
+            # Coeficientes
             coefs = model.params.reset_index()
             coefs.columns = ["Variable", "Coeficiente"]
             coefs["p-valor"] = model.pvalues.values
             coefs["Interpretación"] = ["Incrementa" if c>0 else "Reduce" for c in coefs["Coeficiente"]]
             st.dataframe(coefs)
+
+            # Elasticidades
+            elas_df = compute_elasticities(model, df, FEATURES)
             st.subheader("Elasticidades")
-            st.table(compute_elasticities(model, df, FEATURES))
+            st.table(elas_df)
+
+            # Gráfico de elasticidades
+            st.subheader("Elasticidades (gráfico)")
+            fig_elas = px.bar(
+                elas_df,
+                x="Variable",
+                y="Elasticidad",
+                title="Elasticidades de las Variables",
+                text="Elasticidad"
+            )
+            st.plotly_chart(fig_elas, use_container_width=True)
+
+            # Curva de probabilidad vs precio
+            if "precio" in FEATURES:
+                st.subheader("Curva de Probabilidad vs Precio")
+                precio_min, precio_max = df["precio"].min(), df["precio"].max()
+                precio_grid = np.linspace(precio_min, precio_max, 100)
+                df_grid = pd.DataFrame({feat: df[feat].mean() for feat in FEATURES}, index=precio_grid)
+                df_grid["precio"] = precio_grid
+                X_grid = sm.add_constant(df_grid[FEATURES], has_constant="add")
+                prob_grid = model.predict(X_grid)
+                fig_prob = px.line(
+                    x=precio_grid,
+                    y=prob_grid,
+                    labels={"x": "Precio", "y": "P(Y=1)"},
+                    title="Probabilidad Predicha vs Precio"
+                )
+                st.plotly_chart(fig_prob, use_container_width=True)
 
             # Simulación interactiva
-            st.subheader("Simulación de probabilidades")
+            st.subheader("Simulación de Probabilidad")
             sim_vals = {}
             for feat in FEATURES:
-                # asume numérico continuo
                 min_, max_ = float(df[feat].min()), float(df[feat].max())
                 sim_vals[feat] = st.slider(f"{feat}", min_, max_, float(df[feat].median()))
-            # construimos exógenas
             Xnew = [1.0] + [sim_vals[feat] for feat in FEATURES]
-            # siempre en formato 2D: lista de listas
             prob = model.predict([Xnew])[0]
             st.write(f"**P(Y=1)** para esos valores: {prob:.3f}")
 
@@ -113,19 +144,30 @@ def main():
             st.info("Modelo MNL seleccionado")
             model = fit_mnl(df, FEATURES)
             st.markdown("#### Probabilidades predichas (todo el dataset)")
-            st.dataframe(predict_mnl(model, df, FEATURES))
+            prob_df = predict_mnl(model, df, FEATURES)
+            st.dataframe(prob_df)
+
+            # Gráfico de probabilidades
+            st.subheader("Probabilidades Predichas (gráfico)")
+            fig_mnl = px.line(
+                prob_df.reset_index(),
+                x="index",
+                y=prob_df.columns.tolist(),
+                labels={"value": "Probabilidad", "index": "Observación"},
+                title="Probabilidades Predichas por Alternativa"
+            )
+            st.plotly_chart(fig_mnl, use_container_width=True)
 
             # Simulación interactiva
-            st.subheader("Simulación de probabilidades MNL")
+            st.subheader("Simulación de Probabilidades MNL")
             sim_vals = {}
             for feat in FEATURES:
                 min_, max_ = float(df[feat].min()), float(df[feat].max())
                 sim_vals[feat] = st.slider(f"{feat}", min_, max_, float(df[feat].median()))
-            # un solo caso de prueba
             df_new = pd.DataFrame([{feat: sim_vals[feat] for feat in FEATURES}])
-            probs = predict_mnl(model, df_new, FEATURES)
+            sim_probs = predict_mnl(model, df_new, FEATURES)
             st.write("Probabilidades por alternativa:")
-            st.dataframe(probs)
+            st.dataframe(sim_probs)
 
         st.sidebar.markdown(f"Paso 2: Econometría {'✅' if model else '⬜'}")
 
@@ -140,12 +182,10 @@ def main():
         prompt = st.text_input("Describe el análisis que quieres realizar:")
         if prompt:
             subqs = st.session_state.engine.generate_subquestions(prompt, FEATURES)
-            answers = []
             for i, q in enumerate(subqs, 1):
-                a = st.text_input(f"{i}. {q}", key=f"ans_{i}")
-                answers.append(a)
-                EpistemicNavigator.record(q, a)
-            if any(answers):
+                ans = st.text_input(f"{i}. {q}", key=f"ans_{i}")
+                EpistemicNavigator.record(q, ans)
+            if subqs:
                 st.success(f"{len(subqs)} subpreguntas registradas.")
         st.sidebar.markdown("Paso 3: Deliberación ⚙️")
 
@@ -161,12 +201,9 @@ def main():
         st.header("5. Informe final")
         if st.button("Generar informe"):
             report_bytes = build_report(df, model, st.session_state.engine, diagnostics)
-
-            # Detectar si es PDF (encabezado %PDF) o texto plano
             is_pdf = report_bytes[:4] == b"%PDF"
             filename = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
             mime = "application/pdf" if is_pdf else "text/plain"
-
             st.download_button(
                 label="📥 Descargar Informe",
                 data=report_bytes,
@@ -178,3 +215,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -11,7 +11,7 @@ from elasticities import compute_elasticities
 from deliberation_engine import DeliberationEngine
 from navigator import EpistemicNavigator
 from validation import check_model_diagnostics
-from report_generator import build_report  # ya no necesitamos export_pdf aquí
+from report_generator import build_report  # export_pdf ya no es necesario
 
 def load_example_data():
     np.random.seed(42)
@@ -30,22 +30,14 @@ def load_example_data():
 def fit_logit(df: pd.DataFrame, features: list[str]):
     X = sm.add_constant(df[features])
     y = df["Y"]
-    model = Logit(y, X).fit(disp=False)
-    return model
+    return Logit(y, X).fit(disp=False)
 
 def main():
     st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
     st.title("Simulador Econométrico-Deliberativo para Decisiones de Consumo")
 
     role = st.sidebar.selectbox("Modo de uso", ["Docente", "Consultor"])
-
-    tabs = st.tabs([
-        "1. Datos",
-        "2. Econometría",
-        "3. Deliberación",
-        "4. Diagnóstico",
-        "5. Informe"
-    ])
+    tabs = st.tabs(["1. Datos", "2. Econometría", "3. Deliberación", "4. Diagnóstico", "5. Informe"])
 
     # --- 1. Datos ---
     with tabs[0]:
@@ -89,35 +81,36 @@ def main():
             st.subheader("Elasticidades")
             st.table(elas_df)
 
-            # Gráfico de elasticidades con Streamlit
+            # Gráfico de elasticidades reforzado
             st.subheader("Elasticidades (gráfico)")
-            chart_data = elas_df.set_index("Variable")["Elasticidad"]
+            # Determinar columnas
+            if "Variable" in elas_df.columns and "Elasticidad" in elas_df.columns:
+                idx_col, val_col = "Variable", "Elasticidad"
+            else:
+                idx_col, val_col = elas_df.columns[0], elas_df.columns[1]
+            chart_data = elas_df.set_index(idx_col)[val_col]
             st.bar_chart(chart_data)
 
-            # Curva de probabilidad vs precio
+            # Curva Probabilidad vs Precio
             if "precio" in FEATURES:
-                st.subheader("Probabilidad vs Precio")
-                precio_min, precio_max = df["precio"].min(), df["precio"].max()
-                precio_grid = np.linspace(precio_min, precio_max, 100)
+                st.subheader("Curva: Probabilidad vs Precio")
+                precio_grid = np.linspace(df["precio"].min(), df["precio"].max(), 100)
                 df_grid = pd.DataFrame({feat: df[feat].mean() for feat in FEATURES}, index=precio_grid)
                 df_grid["precio"] = precio_grid
                 X_grid = sm.add_constant(df_grid[FEATURES], has_constant="add")
                 prob_grid = model.predict(X_grid)
-                prob_df = pd.DataFrame({
-                    "precio": precio_grid,
-                    "P(Y=1)": prob_grid
-                }).set_index("precio")
+                prob_df = pd.DataFrame({"P(Y=1)": prob_grid}, index=precio_grid)
                 st.line_chart(prob_df)
 
             # Simulación interactiva
-            st.subheader("Simulación de Probabilidad")
+            st.subheader("Simulación interactiva")
             sim_vals = {}
             for feat in FEATURES:
-                min_, max_ = float(df[feat].min()), float(df[feat].max())
-                sim_vals[feat] = st.slider(f"{feat}", min_, max_, float(df[feat].median()))
+                mi, ma = float(df[feat].min()), float(df[feat].max())
+                sim_vals[feat] = st.slider(f"{feat}", mi, ma, float(df[feat].median()))
             Xnew = [1.0] + [sim_vals[feat] for feat in FEATURES]
             prob = model.predict([Xnew])[0]
-            st.write(f"**P(Y=1)** para esos valores: {prob:.3f}")
+            st.write(f"**P(Y=1)** = {prob:.3f}")
 
         elif model_type == "OLS":
             X = sm.add_constant(df[FEATURES])
@@ -131,26 +124,25 @@ def main():
             coefs["Interpretación"] = ["Incrementa" if c>0 else "Reduce" for c in coefs["Coeficiente"]]
             st.dataframe(coefs)
 
-        else:  # MNL
+        else:
             st.info("Modelo MNL seleccionado")
             model = fit_mnl(df, FEATURES)
-            st.markdown("#### Probabilidades predichas (todo el dataset)")
+            st.markdown("#### Probabilidades (dataset completo)")
             prob_df = predict_mnl(model, df, FEATURES)
             st.dataframe(prob_df)
 
             # Gráfico de probabilidades
-            st.subheader("Probabilidades Predichas (gráfico)")
+            st.subheader("Probabilidades (gráfico)")
             st.line_chart(prob_df)
 
-            # Simulación interactiva
-            st.subheader("Simulación de Probabilidades MNL")
+            # Simulación MNL
+            st.subheader("Simulación interactiva MNL")
             sim_vals = {}
             for feat in FEATURES:
-                min_, max_ = float(df[feat].min()), float(df[feat].max())
-                sim_vals[feat] = st.slider(f"{feat}", min_, max_, float(df[feat].median()))
+                mi, ma = float(df[feat].min()), float(df[feat].max())
+                sim_vals[feat] = st.slider(f"{feat}", mi, ma, float(df[feat].median()))
             df_new = pd.DataFrame([{feat: sim_vals[feat] for feat in FEATURES}])
             sim_probs = predict_mnl(model, df_new, FEATURES)
-            st.write("Probabilidades por alternativa:")
             st.dataframe(sim_probs)
 
         st.sidebar.markdown(f"Paso 2: Econometría {'✅' if model else '⬜'}")
@@ -161,7 +153,7 @@ def main():
     # --- 3. Deliberación ---
     with tabs[2]:
         st.header("3. Deliberación epistémica")
-        if 'engine' not in st.session_state:
+        if "engine" not in st.session_state:
             st.session_state.engine = DeliberationEngine()
         prompt = st.text_input("Describe el análisis que quieres realizar:")
         if prompt:
@@ -188,12 +180,7 @@ def main():
             is_pdf = report_bytes[:4] == b"%PDF"
             filename = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
             mime = "application/pdf" if is_pdf else "text/plain"
-            st.download_button(
-                label="📥 Descargar Informe",
-                data=report_bytes,
-                file_name=filename,
-                mime=mime
-            )
+            st.download_button("📥 Descargar Informe", data=report_bytes, file_name=filename, mime=mime)
             st.success("Informe listo para descargar.")
         st.sidebar.markdown("Paso 5: Informe 📄")
 

@@ -84,16 +84,9 @@ def main():
 
             # Gráfico de elasticidades
             st.subheader("Elasticidades (gráfico)")
-            cols = list(elas_df.columns)
-            if len(cols) >= 2:
-                idx_col, val_col = cols[0], cols[1]
-                try:
-                    chart_data = elas_df.set_index(idx_col)[val_col]
-                    st.bar_chart(chart_data)
-                except KeyError:
-                    st.warning(f"No se encontró la columna para indexar: {idx_col}/{val_col}")
-            else:
-                st.warning("No hay suficientes columnas para graficar elasticidades.")
+            idx_col, val_col = "Variable", "Elasticidad"
+            chart_data = elas_df.set_index(idx_col)[val_col]
+            st.bar_chart(chart_data)
 
             # Curva Probabilidad vs Precio
             if "precio" in FEATURES:
@@ -157,10 +150,9 @@ def main():
     # --- 3. Deliberación ---
     with tabs[2]:
         st.header("3. Deliberación epistémica")
-        # Inicializamos motor si no existe
         if "engine" not in st.session_state:
             st.session_state.engine = DeliberationEngine()
-        # Cuadro para prompt
+
         prompt = st.text_input("Describe el análisis que quieres realizar:")
         if prompt:
             subqs = st.session_state.engine.generate_subquestions(prompt, FEATURES)
@@ -170,8 +162,12 @@ def main():
             if subqs:
                 st.success(f"{len(subqs)} subpreguntas registradas.")
 
-        # Métricas EEE
-        tracker = EpistemicNavigator.get_tracker()
+        # Recuperamos el tracker desde el engine
+        try:
+            tracker = st.session_state.engine.get_tracker()
+        except AttributeError:
+            tracker = getattr(st.session_state.engine, "tracker", {"steps": []})
+
         steps = tracker.get("steps", [])
         if steps:
             st.subheader("Métricas Epistémicas (EEE)")

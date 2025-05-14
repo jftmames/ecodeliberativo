@@ -1,37 +1,37 @@
+# navigator.py
+
+from typing import Dict, Any, List
 import streamlit as st
-from typing import Dict, List
 
 class EpistemicNavigator:
     """
-    Registra y recupera el historial de preguntas y respuestas
-    para luego calcular métricas epistémicas.
+    Registro y manejo del tracker epistémico de preguntas y respuestas.
+    Usa el motor almacenado en st.session_state.engine.
     """
 
     @staticmethod
-    def _ensure_tracker():
-        if "navigator_tracker" not in st.session_state:
-            st.session_state.navigator_tracker = {"steps": []}
+    def record(question: str, answer: str) -> None:
+        """
+        Asocia la respuesta a la última subpregunta sin respuesta que coincida.
+        """
+        engine = st.session_state.get("engine", None)
+        if engine is None:
+            # Nada que registrar si no existe motor
+            return
 
-    @classmethod
-    def record(cls, question: str, answer: str, metadata: Dict = None):
-        """
-        Agrega un paso al tracker:
-          - question: texto de la subpregunta
-          - answer: texto de la respuesta
-          - metadata: diccionario opcional (ej. reformulation)
-        """
-        cls._ensure_tracker()
-        step = {
-            "question": question,
-            "answer": answer or "",
-            "metadata": metadata or {}
-        }
-        st.session_state.navigator_tracker["steps"].append(step)
+        tracker = engine.get_tracker()
+        # Recorremos de atrás hacia adelante para encontrar el paso pendiente
+        for step in reversed(tracker["steps"]):
+            if step["question"] == question and not step["answer"]:
+                step["answer"] = answer
+                return
 
-    @classmethod
-    def get_tracker(cls) -> Dict:
+    @staticmethod
+    def get_tracker() -> Dict[str, List[Dict[str, Any]]]:
         """
-        Devuelve el diccionario {'steps': [...]}
+        Devuelve el tracker completo (lista de pasos con pregunta, respuesta y metadata).
         """
-        cls._ensure_tracker()
-        return st.session_state.navigator_tracker
+        engine = st.session_state.get("engine", None)
+        if engine is None:
+            return {"steps": []}
+        return engine.get_tracker()

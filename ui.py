@@ -11,8 +11,7 @@ from elasticities import compute_elasticities
 from deliberation_engine import DeliberationEngine
 from navigator import EpistemicNavigator
 from validation import check_model_diagnostics
-from report_generator import build_report, export_pdf
-
+from report_generator import build_report  # ya no necesitamos export_pdf aquí
 
 def load_example_data():
     np.random.seed(42)
@@ -28,14 +27,11 @@ def load_example_data():
     df["Y"] = np.random.binomial(1, logits)
     return df
 
-
 def fit_logit(df: pd.DataFrame, features: list[str]):
-    # Matriz de regresores con constante
     X = sm.add_constant(df[features])
     y = df["Y"]
     model = Logit(y, X).fit(disp=False)
     return model
-
 
 def main():
     st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
@@ -51,7 +47,7 @@ def main():
         "5. Informe"
     ])
 
-    # Paso 1: Datos
+    # --- 1. Datos ---
     with tabs[0]:
         st.header("1. Datos")
         uploaded = st.file_uploader("Sube un CSV con tus datos (incluye Y)", type="csv")
@@ -69,7 +65,7 @@ def main():
     if not FEATURES:
         return
 
-    # Paso 2: Econometría
+    # --- 2. Econometría ---
     with tabs[1]:
         st.header("2. Econometría")
         model_type = st.radio("Elige modelo:", ["Logit", "OLS", "MNL"])
@@ -79,7 +75,7 @@ def main():
             model = fit_logit(df, FEATURES)
             st.markdown("### Modelo Logit estimado")
             terms = " + ".join([f"β₍{i+1}₎·{FEATURES[i]}" for i in range(len(FEATURES))])
-            st.latex(f"P(Y=1|X) = 1 / (1 + exp(-[β₀ + {terms}]))")
+            st.latex(f"P(Y=1|X) = 1 / (1 + e^(-[β₀ + {terms}]))")
             coefs = model.params.reset_index()
             coefs.columns = ["Variable", "Coeficiente"]
             coefs["p-valor"] = model.pvalues.values
@@ -111,7 +107,7 @@ def main():
     if model is None:
         return
 
-    # Paso 3: Deliberación
+    # --- 3. Deliberación ---
     with tabs[2]:
         st.header("3. Deliberación epistémica")
         if 'engine' not in st.session_state:
@@ -119,26 +115,40 @@ def main():
         prompt = st.text_input("Describe el análisis que quieres realizar:")
         if prompt:
             subqs = st.session_state.engine.generate_subquestions(prompt, FEATURES)
+            answers = []
             for i, q in enumerate(subqs, 1):
-                ans = st.text_input(f"{i}. {q}")
-                EpistemicNavigator.record(q, ans)
-            st.success(f"{len(subqs)} subpreguntas registradas.")
+                a = st.text_input(f"{i}. {q}", key=f"ans_{i}")
+                answers.append(a)
+                EpistemicNavigator.record(q, a)
+            if answers:
+                st.success(f"{len(subqs)} subpreguntas registradas.")
         st.sidebar.markdown("Paso 3: Deliberación ⚙️")
 
-    # Paso 4: Diagnóstico
+    # --- 4. Diagnóstico ---
     with tabs[3]:
         st.header("4. Diagnóstico del modelo")
         diagnostics = check_model_diagnostics(df, model, FEATURES)
         st.json(diagnostics)
         st.sidebar.markdown("Paso 4: Diagnóstico ✅")
 
-    # Paso 5: Informe
+    # --- 5. Informe ---
     with tabs[4]:
         st.header("5. Informe final")
-        if st.button("Generar informe PDF"):
-            report = build_report(df, model, st.session_state.engine, diagnostics)
-            export_pdf(report, "informe_simulador.pdf")
-            st.success("Informe creado: informe_simulador.pdf")
+        if st.button("Generar informe"):
+            report_bytes = build_report(df, model, st.session_state.engine, diagnostics)
+
+            # Detectar tipo y ofrecer descarga
+            is_pdf = report_bytes[:4] == b"%PDF"
+            filename = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
+            mime = "application/pdf" if is_pdf else "text/plain"
+
+            st.download_button(
+                label="📥 Descargar Informe",
+                data=report_bytes,
+                file_name=filename,
+                mime=mime
+            )
+            st.success("Informe listo para descargar.")
         st.sidebar.markdown("Paso 5: Informe 📄")
 
 if __name__ == "__main__":

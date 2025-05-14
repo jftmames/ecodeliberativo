@@ -1,39 +1,41 @@
 # mnl.py
 
 import pandas as pd
-import numpy as np
 import statsmodels.api as sm
-from statsmodels.discrete.discrete_model import MNLogit
+import numpy as np
 
-def fit_mnl(df: pd.DataFrame, features: list[str]) -> MNLogit:
+def fit_mnl(df: pd.DataFrame, features: list[str], endog_name: str = "Y"):
     """
-    Ajusta un modelo de elección multinomial (MNLogit) usando statsmodels.
-    - df: DataFrame que incluye la variable objetivo "Y" categórica.
+    Ajusta un modelo de regresión logística multinomial (MNLogit).
+    - df: DataFrame con las variables explicativas y la variable dependiente.
     - features: lista de nombres de columnas explicativas.
-    Devuelve el objeto ajustado MNLogit.
+    - endog_name: nombre de la columna dependiente (categorías).
     """
-    # Matriz de diseño con constante
-    X = sm.add_constant(df[features], has_constant='add')
-    y = df["Y"]
-    model = MNLogit(y, X).fit(disp=False)
+    # Construye diseño con constante
+    X = sm.add_constant(df[features], has_constant="add")
+    y = df[endog_name]
+    model = sm.MNLogit(y, X).fit(disp=False)
     return model
 
-def predict_mnl(model: MNLogit, df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
+def predict_mnl(model, df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     """
-    Dados un modelo MNLogit ajustado y un DataFrame, predice probabilidades
-    para cada categoría de Y.
-    - model: objeto MNLogit ajustado.
-    - df: DataFrame con las mismas features usadas en el ajuste.
-    - features: lista de nombres de columnas explicativas.
-    Retorna un DataFrame con columnas P(Y=cat) para cada categoría presente en Y.
+    Dada la tabla de datos y el modelo entrenado, devuelve un DataFrame
+    n_obs × n_categorías con las probabilidades P(Y=cat).
     """
-    # Reconstruimos X
-    X_new = sm.add_constant(df[features], has_constant='add')
-    # shape = (n_obs, n_categories)
-    prob_array = model.predict(X_new)
-    # Extraemos las categorías únicas en el mismo orden que aparece en el endógeno
-    cats = list(dict.fromkeys(model.model.endog))  # preserva orden de aparición
-    # Formamos nombres de columna
+    # Reconstruye X con constante
+    X = sm.add_constant(df[features], has_constant="add")
+    # statsmodels MNLogit.predict regresa un array (n_obs, n_cats)
+    probs = model.predict(X)  # numpy array
+
+    # Extraemos las categorías originales del endog en el modelo
+    # model.model.endog es el array de entrenamiento
+    cats = np.unique(model.model.endog)
+    cats.sort()
+
+    # Nombramos columnas
     col_names = [f"P(Y={cat})" for cat in cats]
-    # Devolvemos DataFrame
-    return pd.DataFrame(prob_array, columns=col_names, index=df.index)
+
+    # Construimos el DataFrame final
+    probs_df = pd.DataFrame(probs, columns=col_names, index=df.index)
+
+    return probs_df

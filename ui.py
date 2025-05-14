@@ -10,6 +10,7 @@ from mnl import fit_mnl, predict_mnl
 from elasticities import compute_elasticities
 from deliberation_engine import DeliberationEngine
 from navigator import EpistemicNavigator
+from epistemic_metrics import compute_eee                  # ← Nueva importación
 from validation import check_model_diagnostics
 from report_generator import build_report  # export_pdf ya no es necesario
 
@@ -81,13 +82,9 @@ def main():
             st.subheader("Elasticidades")
             st.table(elas_df)
 
-            # Gráfico de elasticidades reforzado
+            # Gráfico de elasticidades
             st.subheader("Elasticidades (gráfico)")
-            # Determinar columnas
-            if "Variable" in elas_df.columns and "Elasticidad" in elas_df.columns:
-                idx_col, val_col = "Variable", "Elasticidad"
-            else:
-                idx_col, val_col = elas_df.columns[0], elas_df.columns[1]
+            idx_col, val_col = "Variable", "Elasticidad"
             chart_data = elas_df.set_index(idx_col)[val_col]
             st.bar_chart(chart_data)
 
@@ -163,6 +160,14 @@ def main():
                 EpistemicNavigator.record(q, ans)
             if subqs:
                 st.success(f"{len(subqs)} subpreguntas registradas.")
+
+        # Métricas EEE
+        tracker = EpistemicNavigator.get_tracker()  # {'steps': [...]}
+        if tracker.get("steps"):
+            st.subheader("Métricas Epistémicas (EEE)")
+            metrics = compute_eee(tracker, max_steps=10)
+            st.table(pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"]))
+
         st.sidebar.markdown("Paso 3: Deliberación ⚙️")
 
     # --- 4. Diagnóstico ---

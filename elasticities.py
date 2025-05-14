@@ -1,29 +1,30 @@
 # elasticities.py
 
-import pandas as pd
 import numpy as np
-import statsmodels.api as sm
+import pandas as pd
 
-def compute_elasticities(model, df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
+def compute_elasticities(model, df: pd.DataFrame, features: list[str]):
     """
-    Calcula elasticidades para un modelo Logit estimado con Statsmodels.
-    Fórmula aproximada de elasticidad media:
-        E_j = β_j * x̄_j * p̄ * (1 - p̄)
-    donde x̄_j es la media de la variable j y p̄ la probabilidad media predicha.
+    Para un modelo Logit, calcula elasticidades puntuales:
+      ε_j = β_j * x_j * p * (1 − p)
+    donde p = P(Y=1|X) y β_j es el coeficiente de feature j.
+
+    Devuelve un DataFrame con columnas:
+      - Variable
+      - Elasticidad
     """
-    # Reconstruir la matriz de diseño para predecir probabilidades
-    X = sm.add_constant(df[features])
-    # Probabilidades medias
+    coefs = model.params
+    X = model.model.exog  # incluye la constante en posición 0
     p = model.predict(X)
-    p_mean = np.mean(p)
-    # Extraer betas (excluimos el intercepto)
-    betas = model.params[1:].to_dict()  # {'feature': beta, ...}
-    # Calcular elasticidades
     elas = []
-    for feat in features:
-        beta_j = betas.get(feat, 0.0)
-        x_mean = df[feat].mean()
-        # Elasticidad
-        E_j = beta_j * x_mean * p_mean * (1 - p_mean)
-        elas.append({"Variable": feat, "Elasticidad": E_j})
+
+    for idx, feat in enumerate(['const'] + features):
+        if feat == 'const':
+            continue
+        β = coefs[feat]
+        xj = df[feat]
+        # Elasticidad promedio en la muestra
+        ε = np.mean(β * xj * p * (1 - p))
+        elas.append({'Variable': feat, 'Elasticidad': ε})
+
     return pd.DataFrame(elas)

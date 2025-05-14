@@ -1,45 +1,45 @@
-import os
-from openai import OpenAI
+from typing import List
 
 class DeliberationEngine:
     """
-    Motor que descompone un análisis en subpreguntas jerarquizadas
-    usando la nueva interfaz openai>=1.0.0.
+    Motor de generación de subpreguntas para guiar la deliberación.
+    Dado un prompt y un conjunto de variables, genera un conjunto de preguntas
+    que estructuran el análisis epistémico.
     """
+    def __init__(self):
+        # En un futuro podría inicializar un modelo LLM u otros recursos.
+        pass
 
-    def __init__(self, model_name: str = "gpt-4"):
-        # Inicializa cliente; usa OPENAI_API_KEY de entorno o secretos de Streamlit
-        self.client = OpenAI()
-        self.model = model_name
-
-    def generate_subquestions(self, prompt: str, features: list[str] | None = None) -> list[str]:
+    def generate_subquestions(self, prompt: str, features: List[str]) -> List[str]:
         """
-        Genera subpreguntas a partir de un prompt de análisis y opcionalmente lista de variables.
+        Genera subpreguntas a partir de un prompt y la lista de variables.
+
+        :param prompt: descripción del análisis o pregunta raíz.
+        :param features: lista de nombres de variables explicativas.
+        :return: lista de subpreguntas orientadas a diferentes facetas del análisis.
         """
-        system_msg = (
-            "Eres un motor de indagación que descompone un análisis en subpreguntas jerarquizadas. "
-            "Produce entre 3 y 7 preguntas claras y concisas."
-        )
-        user_msg = f"Análisis: {prompt}"
-        if features:
-            user_msg += f"\nVariables del modelo: {', '.join(features)}"
+        subquestions: List[str] = []
 
-        # Llamada usando nuevo cliente OpenAI
-        response = self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {"role": "system", "content": system_msg},
-                {"role": "user", "content": user_msg},
-            ],
-            temperature=0.6,
-            max_tokens=256,
+        # 1. Generar preguntas sobre cada variable
+        for feat in features:
+            subquestions.append(
+                f"¿Cómo influye '{feat}' en el resultado de la pregunta: '{prompt}'?"
+            )
+
+        # 2. Preguntas genéricas de profundización
+        subquestions.append(
+            f"¿Qué supuestos implícitos subyacen en la pregunta: '{prompt}'?"
+        )
+        subquestions.append(
+            "¿Qué datos adicionales o fuentes de información serían necesarios para validar este análisis?"
+        )
+        subquestions.append(
+            "¿Existen posibles contradicciones o escenarios alternativos que debamos considerar?"
         )
 
-        text = response.choices[0].message.content
-        # Parsear texto en lista de preguntas
-        questions = []
-        for line in text.split("\n"):
-            q = line.strip().lstrip("0123456789.)- ")
-            if q:
-                questions.append(q)
-        return questions
+        # 3. Pregunta de revisión del enfoque
+        subquestions.append(
+            f"¿Deberíamos reformular la pregunta raíz ('{prompt}') para obtener un enfoque más claro?"
+        )
+
+        return subquestions

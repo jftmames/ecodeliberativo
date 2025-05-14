@@ -148,7 +148,7 @@ def main():
         return
 
     # --- 3. Deliberación ---
-      with tabs[2]:
+    with tabs[2]:
         st.header("3. Deliberación epistémica")
         # Inicializamos motor si no existe
         if "engine" not in st.session_state:
@@ -159,18 +159,16 @@ def main():
             subqs = st.session_state.engine.generate_subquestions(prompt, FEATURES)
             for i, q in enumerate(subqs, 1):
                 ans = st.text_input(f"{i}. {q}", key=f"ans_{i}")
-                # Registramos tanto pregunta como respuesta
                 EpistemicNavigator.record(q, ans)
             if subqs:
                 st.success(f"{len(subqs)} subpreguntas registradas.")
 
-        # Ahora recuperamos el tracker y mostramos las métricas EEE
-        tracker = EpistemicNavigator.get_tracker()  # debe devolver {'steps': [ {question, answer, metadata}, ... ]}
+        # Métricas EEE
+        tracker = EpistemicNavigator.get_tracker()
         steps = tracker.get("steps", [])
         if steps:
             st.subheader("Métricas Epistémicas (EEE)")
             metrics = compute_eee(tracker, max_steps=10)
-            # Usamos un DataFrame para verlo bonito
             eeedf = pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"])
             eeedf.index.name = "Dimensión"
             st.table(eeedf)

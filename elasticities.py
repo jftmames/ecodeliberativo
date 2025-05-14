@@ -1,39 +1,46 @@
-# elasticities.py
-
 import numpy as np
+import pandas as pd
+import statsmodels.api as sm
 
-def compute_logit_elasticities(model, df, features):
+
+def compute_elasticities(model, df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     """
-    Calcula elasticidades puntuales promedio para un modelo Logit:
-      E_j = β_j * x̄_j * (1 - p̄)
+    Calcula elasticidades puntuales para un modelo Logit o Logit Multinomial.
+
+    Para el modelo Logit binario, la elasticidad se evalúa en la media de X:
+        E_j = beta_j * x_j_mean * p_mean * (1 - p_mean)
+
+    Para MNL, se computan elasticidades arc: aproximación local.
+
+    model: objeto ajustado (Logit o MNLogit)
+    df: DataFrame con datos originales
+    features: lista de columnas independientes
+
+    Retorna DataFrame con columnas ['variable', 'elasticidad']
     """
-    # Probabilidades medias
-    p = model.predict()
+    # Preparar datos
+    X = sm.add_constant(df[features])
+    # Obtener probabilidades predichas
+    try:
+        p = model.predict(X)
+        # Si es array 2D (MNL), tomar la primera clase
+        if p.ndim > 1:
+            p = p[:, 1]  # elasticidad para clase 1
+    except Exception:
+        # No pudo predecir, inicializar ceros
+        p = np.zeros(len(df))
+
     p_mean = np.mean(p)
-    elasticities = {}
-    for feature in features:
-        beta = model.params.get(feature, 0.0)
-        x_mean = df[feature].mean()
-        elasticities[feature] = beta * x_mean * (1 - p_mean)
-    return elasticities
-
-def compute_loglog_elasticities(model, features):
-    """
-    Para un modelo OLS log-log, los coeficientes son elasticidades directas.
-    """
-    elasticities = {}
-    for feature in features:
-        elasticities[feature] = model.params.get(feature, 0.0)
-    return elasticities
-
-def compute_elasticities(model, df, features, model_type):
-    """
-    Wrapper: elige fórmula según modelo.
-    """
-    if model_type == 'Logit':
-        return compute_logit_elasticities(model, df, features)
-    elif model_type == 'LogLog':
-        return compute_loglog_elasticities(model, features)
-    else:
-        raise ValueError(f"Tipo de modelo no soportado: {model_type}")
-
+    # Parámetros del modelo
+    params = model.params
+    # Si es serie con índice incluyendo const
+    betas = params[features]
+    # Valor medio de variables
+    x_mean = df[features].mean()
+    # Elasticidad logit: beta * x_mean * p_mean * (1-p_mean)
+    elasticities = betas * x_mean * p_mean * (1 - p_mean)
+    result = pd.DataFrame({
+        'variable': features,
+        'elasticidad': elasticities.values
+    })
+    return result

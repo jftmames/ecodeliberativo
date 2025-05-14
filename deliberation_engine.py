@@ -1,65 +1,53 @@
 # deliberation_engine.py
+import os
+import openai
 
-from openai import OpenAI
-from typing import List, Dict
-import streamlit as st
-
-class InquiryEngine:
+class DeliberationEngine:
     """
-    Genera subpreguntas usando OpenAI a partir de un prompt y variables.
-    Se basa en la nueva API client = OpenAI().
+    Motor que, dada una descripción del análisis, genera
+    automáticamente subpreguntas jerarquizadas usando la API de OpenAI.
     """
-    def __init__(self):
-        # Inicializa el cliente con la clave de Streamlit Secrets
-        self.client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
-        self.default_features = ["precio", "ingreso", "edad"]
 
-    def generate_subquestions(self, prompt: str, features: List[str] = None) -> List[str]:
-        if features is None:
-            features = self.default_features
+    def __init__(self, model_name: str = "gpt-4"):
+        # Se asume que has configurado OPENAI_API_KEY en las secrets de Streamlit
+        openai.api_key = os.getenv("OPENAI_API_KEY")
+        self.model = model_name
 
+    def generate_subquestions(self, prompt: str, features: list[str] | None = None) -> list[str]:
+        """
+        Genera una lista de subpreguntas basadas en el prompt y, opcionalmente, las variables del modelo.
+        """
+        # Contexto de sistema: orientar al LLM a producir subpreguntas
         system_msg = (
-            "Eres un asistente econométrico que descompone un análisis "
-            "de elección del consumidor en subpreguntas claras y jerarquizadas."
+            "Eres un motor de indagación que descompone un análisis en subpreguntas jerarquizadas. "
+            "Produces entre 3 y 7 preguntas claras y concisas."
         )
-        user_msg = (
-            f"Análisis: {prompt}\n"
-            f"Variables: {', '.join(features)}.\n"
-            "Devuélveme 5 subpreguntas numeradas, sin explicaciones adicionales."
-        )
+        # Construimos el mensaje de usuario incluyendo las features si las hay
+        user_msg = f"Análisis: {prompt}"
+        if features:
+            user_msg += f"\nVariables del modelo: {', '.join(features)}"
 
-        resp = self.client.chat.completions.create(
-            model="gpt-4",
+        response = openai.ChatCompletion.create(
+            model=self.model,
             messages=[
                 {"role": "system", "content": system_msg},
-                {"role": "user",   "content": user_msg}
+                {"role": "user",   "content": user_msg},
             ],
-            temperature=0.3,
-            max_tokens=200
+            temperature=0.6,
+            max_tokens=256
         )
 
-        text = resp.choices[0].message.content.strip()
-        subs = []
-        for line in text.splitlines():
-            line = line.strip()
-            # extrae líneas que empiecen con dígito + punto
-            if line and line[0].isdigit() and "." in line:
-                subs.append(line.split(".", 1)[1].strip())
-        return subs
-
-class ReasoningTracker:
-    """
-    Registra el flujo de razonamiento: preguntas planteadas y sus respuestas.
-    """
-    def __init__(self):
-        self.log: List[Dict] = []
-
-    def add_step(self, question: str, answer: str, metadata: Dict = None):
-        self.log.append({
-            "question": question,
-            "answer": answer,
-            "metadata": metadata or {}
-        })
-
-    def to_json(self) -> Dict:
-        return {"steps": self.log}
+        text = response.choices[0].message.content
+        # Parseamos líneas en lista de preguntas (quitando guiones o numeración)
+        lines = []
+        for raw in text.split("\n"):
+            q = raw.strip()
+            if not q:
+                continue
+            # Eliminar prefijos tipo "1. " o "- "
+            if q[0].isdigit() and q[1] in ".)":
+                q = q[2:].strip()
+            if q.startswith("-"):
+                q = q[1:].strip()
+            lines.append(q)
+        return lines

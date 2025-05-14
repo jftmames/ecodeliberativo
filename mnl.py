@@ -1,43 +1,55 @@
 # mnl.py
 
 import pandas as pd
-import numpy as np
 import statsmodels.api as sm
 from statsmodels.discrete.discrete_model import MNLogit
-from typing import List, Union
 
-def fit_mnl(df: pd.DataFrame, features: List[str]) -> sm.MNLogitResults:
+def fit_mnl(df: pd.DataFrame, features: list[str]) -> MNLogit:
     """
-    Ajusta un modelo Multinomial Logit (MNL) sobre df.
-    - df: DataFrame que incluye la variable Y categórica.
-    - features: lista de nombres de columnas explicativas.
-    Retorna el objeto resultados de MNLogit.
+    Ajusta un modelo multinomial logit (MNL) a los datos.
+    
+    Parámetros:
+    - df: DataFrame que contiene la variable dependiente 'Y' (categórica)
+          y las explicativas listadas en `features`.
+    - features: lista de nombres de columnas de df a usar como regresoras.
+    
+    Retorna:
+    - model: objeto MNLogitResults ya ajustado (fit).
     """
-    # Diseño de la matriz de regresores con constante
-    X = sm.add_constant(df[features], has_constant="add")
+    # Construir matriz de diseño con constante
+    X = sm.add_constant(df[features], has_constant='add')
     y = df["Y"]
-    # Ajuste sin mostrar salida en consola
-    model = MNLogit(y, X).fit(disp=False)
-    return model
+    
+    # Ajustar el modelo
+    mnl = MNLogit(y, X)
+    result = mnl.fit(disp=False)
+    return result
 
-def predict_mnl(model: sm.MNLogitResults,
-                df: pd.DataFrame,
-                features: List[str]
-               ) -> pd.DataFrame:
+def predict_mnl(model: MNLogit, df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     """
-    Predice las probabilidades de cada categoría de Y para las filas de df.
-    - model: objeto retornado por fit_mnl.
-    - df: DataFrame con las mismas features usadas en el ajuste.
-    - features: lista de nombres de columnas explicativas.
-    Retorna un DataFrame de probabilidades, con una columna por categoría de Y.
+    Dada una instancia de MNLogitResults y un DataFrame de nuevas observaciones,
+    calcula las probabilidades predichas para cada categoría de Y.
+    
+    Parámetros:
+    - model: objeto MNLogitResults de statsmodels, previamente ajustado.
+    - df: DataFrame con las mismas columnas en `features` para predecir.
+    - features: lista de nombres de columnas en df usadas por el modelo.
+    
+    Retorna:
+    - probs_df: DataFrame de forma (n_obs × n_categories) con las probabilidades
+                predichas para cada categoría de la variable dependiente.
+                Las columnas están nombradas según las categorías originales de Y.
     """
-    # Construir diseño idéntico al de entrenamiento
-    X = sm.add_constant(df[features], has_constant="add")
-    # predict devuelve un array (n_obs, n_categories)
-    probs = model.predict(X)
-    # Obtener etiqutas de las categorías de Y, ordenadas
-    # model.model.endog es el vector original de Y
-    cats = sorted(pd.unique(model.model.endog))
-    # Convertir a DataFrame con nombres de columnas iguales a las categorías
-    df_probs = pd.DataFrame(probs, columns=[str(c) for c in cats], index=df.index)
-    return df_probs
+    # Reconstruir matriz de diseño para predicción
+    Xnew = sm.add_constant(df[features], has_constant='add')
+    
+    # model.predict devuelve un numpy array de shape (n_obs, n_choices)
+    probs = model.predict(Xnew)
+    
+    # Determinar las categorías originales de Y
+    # model.model.endog contiene la serie de Y de ajuste
+    categories = pd.Categorical(model.model.endog).categories
+    
+    # Construir DataFrame con columnas etiquetadas
+    probs_df = pd.DataFrame(probs, columns=[str(cat) for cat in categories], index=df.index)
+    return probs_df

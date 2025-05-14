@@ -2,43 +2,51 @@
 
 import pandas as pd
 import numpy as np
-import statsmodels.api as sm
-from typing import List, Union
+from statsmodels.discrete.discrete_model import Logit
+from typing import List
 
-def compute_elasticities(model: sm.DiscreteResults, 
-                         df: pd.DataFrame, 
-                         features: List[str]
-                        ) -> pd.DataFrame:
+def compute_elasticities(
+    model: Logit, 
+    df: pd.DataFrame, 
+    features: List[str]
+) -> pd.DataFrame:
     """
-    Calcula elasticidades promedio para un modelo Logit.
+    Calcula la elasticidad promedio de P(Y=1) respecto a cada variable continua.
     
-    Para cada variable explicativa x_k:
-      E_k = β_k * x̄_k * p̄ * (1 - p̄)
-    donde:
-      - β_k      : coeficiente de la variable k
-      - x̄_k     : media de la variable k en df
-      - p̄       : probabilidad promedio predicha (P(Y=1))
-    
-    Devuelve un DataFrame con columnas ["Variable", "Elasticidad"].
+    Elasticidad E_j = β_j * x_j * (1 - p)  [marginal multiplicativa]
+    y luego se promedian sobre las observaciones.
+
+    Parámetros:
+    - model: objeto ajustado de statsmodels.discrete.discrete_model.LogitResults
+    - df: DataFrame con los datos usados en el ajuste
+    - features: lista de nombres de variables explicativas (deben ser continuas)
+
+    Devuelve:
+    DataFrame con columnas ["Variable", "Elasticidad"].
     """
-    # Construir matriz de diseño
-    X = sm.add_constant(df[features], has_constant='add')
-    # Probabilidades predichas
+    # Obtener betas
+    params = model.params
+    # Matriz X con constante
+    X = model.model.exog
+    # Predecir probabilidades
     p = model.predict(X)
-    p_mean = np.mean(p)
-    
-    rows = []
-    params = model.params  # incluye 'const'
+    # Construir DataFrame de exógenas (coincidente con X sin constante)
+    # statsmodels guarda nombres en model.exog_names
+    exog_names = model.model.exog_names
+    # Localizar índice de cada feature en exog_names
+    idx = {name: exog_names.index(name) for name in exog_names}
+    # Para cada feature, calcular E_j_i = β_j * x_{ij} * (1 - p_i)
+    results = []
     for feat in features:
-        beta = params.get(feat, np.nan)
-        x_mean = df[feat].mean()
-        # Elasticidad promedio
-        elas = beta * x_mean * p_mean * (1 - p_mean)
-        rows.append({"Variable": feat, "Elasticidad": elas})
-    
-    elas_df = pd.DataFrame(rows)
-    # Ordenar de mayor a menor magnitud
-    elas_df["Magnitud"] = elas_df["Elasticidad"].abs()
-    elas_df = elas_df.sort_values("Magnitud", ascending=False).drop(columns="Magnitud")
-    elas_df = elas_df.reset_index(drop=True)
-    return elas_df
+        if feat not in params.index:
+            continue  # por si acaso
+        beta_j = params[feat]
+        # columna de valores x_j (usando X matriz)
+        x_j = X[:, idx[feat]]
+        # vector de elasticidades individuales
+        ej_i = beta_j * x_j * (1 - p)
+        # promedia sobre i
+        E_j = np.mean(ej_i)
+        results.append({"Variable": feat, "Elasticidad": E_j})
+
+    return pd.DataFrame(results)

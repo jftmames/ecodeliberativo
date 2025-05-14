@@ -1,37 +1,52 @@
-# mnl.py
-
 import pandas as pd
-import numpy as np
 import statsmodels.api as sm
 from statsmodels.discrete.discrete_model import MNLogit
 
-def fit_mnl(df: pd.DataFrame, features: list[str]):
+def fit_mnl(df: pd.DataFrame, features: list[str], target: str = "Y") -> sm.discrete.MNLogit:
     """
-    Ajusta un modelo de elección múltiple (MNLogit) sobre df,
-    usando las columnas `features` como regresoras y 'Y' como variable dependiente.
-    """
-    # Añadimos constante
-    X = sm.add_constant(df[features], has_constant="add")
-    y = df["Y"]
-    model = MNLogit(y, X).fit(disp=False)
-    return model
+    Ajusta un modelo MNL (Multinomial Logit) usando statsmodels.
 
-def predict_mnl(model, df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
-    """
-    Dada la instancias en df (solo con las columnas `features`),
-    añade constante y devuelve un DataFrame con las probabilidades
-    de cada alternativa según el modelo MNLogit ajustado.
-    """
-    # Asegurarnos de que la constante está incluida
-    X = sm.add_constant(df[features], has_constant="add")
-    # Obtenemos la matriz de probabilidades (n_obs × n_categories)
-    probs = model.predict(X)
+    Parámetros:
+        df: DataFrame con datos.
+        features: Lista de variables explicativas.
+        target: Nombre de la variable dependiente categórica.
 
-    # Determinar las categorías a partir del endogénico usado en el modelo
-    # model.model.endog es un array con valores de Y
-    categories = np.unique(model.model.endog)
-    # Crear nombres para las columnas
-    col_names = [f"P(Y={cat})" for cat in categories]
+    Retorna:
+        result: Resultado ajustado de MNLogit.
+    """
+    # Matriz de diseño
+    X = sm.add_constant(df[features], prepend=True)
+    # Variable dependiente
+    y = df[target]
+    # Ajuste del modelo
+    model = MNLogit(y, X)
+    result = model.fit(disp=False)
+    return result
 
-    # Finalmente devolvemos el DataFrame con las probabilidades y nombres adecuados
-    return pd.DataFrame(probs, columns=col_names)
+
+def predict_mnl(result: sm.discrete.MNLogit, df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
+    """
+    Predice probabilidades con un modelo MNL ajustado.
+
+    Parámetros:
+        result: Objeto resultado de fit_mnl.
+        df: DataFrame con datos nuevos.
+        features: Lista de variables explicativas.
+
+    Retorna:
+        DataFrame de probabilidades por alternativa.
+    """
+    # Matriz de predicción
+    Xnew = sm.add_constant(df[features], prepend=True)
+    # Predecir
+    probs = result.predict(Xnew)
+    # Determinar nombres de categorías
+    categories = result.model.endog.unique()
+    # Asegurar orden reproducible
+    try:
+        categories = sorted(categories)
+    except TypeError:
+        categories = list(categories)
+    # Crear DataFrame
+    prob_df = pd.DataFrame(probs, columns=[str(cat) for cat in categories])
+    return prob_df

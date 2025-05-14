@@ -37,8 +37,14 @@ def main():
     st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
     st.title("Simulador Econométrico-Deliberativo para Decisiones de Consumo")
 
+    # Sidebar role and progress
     role = st.sidebar.selectbox("Modo de uso", ["Docente", "Consultor"])
-    tabs = st.tabs(["1. Datos", "2. Econometría", "3. Deliberación", "4. Diagnóstico", "5. Informe"])
+    steps_status = {1: "⬜", 2: "⬜", 3: "⚙️", 4: "✅", 5: "📄"}
+
+    tabs = st.tabs([
+        "1. Datos", "2. Econometría", "3. Deliberación",
+        "4. Diagnóstico", "5. Informe"
+    ])
 
     # --- 1. Datos ---
     with tabs[0]:
@@ -51,12 +57,13 @@ def main():
             df = load_example_data()
         st.write(df.head())
         FEATURES = st.multiselect(
-            "Selecciona variables explicativas:",
+            "Selecciona variables explicativas:", 
             [c for c in df.columns if c != "Y"]
         )
         if not FEATURES:
             st.warning("Selecciona al menos una variable.")
-        st.sidebar.markdown(f"Paso 1: Datos {'✅' if FEATURES else '⬜'}")
+        steps_status[1] = "✅" if FEATURES else "⬜"
+        st.sidebar.markdown(f"Paso 1: Datos {steps_status[1]}")
 
     if not FEATURES:
         return
@@ -70,52 +77,53 @@ def main():
         if model_type == "Logit":
             model = fit_logit(df, FEATURES)
             st.markdown("### Modelo Logit estimado")
-            terms = " + ".join(f"β₍{i+1}₎·{FEATURES[i]}" for i in range(len(FEATURES)))
+            terms = " + ".join(
+                f"β₍{i+1}₎·{FEATURES[i]}" for i in range(len(FEATURES))
+            )
             st.latex(f"P(Y=1|X) = 1 / \\bigl(1 + e^{{-[β₀ + {terms}]}}\\bigr)")
 
-            # Coeficientes
+            # Tabla de coeficientes
             coefs = model.params.reset_index()
             coefs.columns = ["Variable", "Coeficiente"]
             coefs["p-valor"] = model.pvalues.values
-            coefs["Interpretación"] = ["Incrementa" if c > 0 else "Reduce" for c in coefs["Coeficiente"]]
+            coefs["Interpretación"] = [
+                "Incrementa" if c > 0 else "Reduce"
+                for c in coefs["Coeficiente"]
+            ]
             st.dataframe(coefs)
 
             # Elasticidades
-            elas_df = compute_elasticities(model, df, FEATURES)
             st.subheader("Elasticidades")
+            elas_df = compute_elasticities(model, df, FEATURES)
             st.table(elas_df)
 
             # Gráfico de elasticidades
             st.subheader("Elasticidades (gráfico)")
-            if {"Variable", "Elasticidad"}.issubset(elas_df.columns):
+            if "Variable" in elas_df.columns and "Elasticidad" in elas_df.columns:
                 chart_data = elas_df.set_index("Variable")["Elasticidad"]
                 st.bar_chart(chart_data)
-            else:
-                st.info("No se pudo graficar elasticidades: columnas esperadas no encontradas.")
 
             # Curva Probabilidad vs Precio
             if "precio" in FEATURES:
                 st.subheader("Curva: Probabilidad vs Precio")
-                precio_grid = np.linspace(df["precio"].min(), df["precio"].max(), 100)
-                df_grid = pd.DataFrame(
-                    {feat: df[feat].mean() for feat in FEATURES},
-                    index=precio_grid
-                )
-                df_grid["precio"] = precio_grid
-                X_grid = sm.add_constant(df_grid[FEATURES], has_constant="add")
-                prob_grid = model.predict(X_grid)
-                prob_df = pd.DataFrame({"P(Y=1)": prob_grid}, index=precio_grid)
-                st.line_chart(prob_df)
+                grid = np.linspace(df["precio"].min(), df["precio"].max(), 100)
+                df_grid = pd.DataFrame({
+                    feat: df[feat].mean() for feat in FEATURES
+                }, index=grid)
+                df_grid["precio"] = grid
+                Xg = sm.add_constant(df_grid[FEATURES], has_constant="add")
+                pg = model.predict(Xg)
+                st.line_chart(pd.DataFrame({"P(Y=1)": pg}, index=grid))
 
             # Simulación interactiva
             st.subheader("Simulación interactiva")
             sim_vals = {}
             for feat in FEATURES:
-                mi, ma = float(df[feat].min()), float(df[feat].max())
-                sim_vals[feat] = st.slider(feat, mi, ma, float(df[feat].median()))
-            Xnew = [1.0] + [sim_vals[feat] for feat in FEATURES]
-            prob = model.predict([Xnew])[0]
-            st.write(f"**P(Y=1)** = {prob:.3f}")
+                lo, hi = float(df[feat].min()), float(df[feat].max())
+                sim_vals[feat] = st.slider(feat, lo, hi, float(df[feat].median()))
+            xnew = [1] + [sim_vals[f] for f in FEATURES]
+            pnew = model.predict([xnew])[0]
+            st.write(f"**P(Y=1)** = {pnew:.3f}")
 
         elif model_type == "OLS":
             X = sm.add_constant(df[FEATURES])
@@ -126,7 +134,10 @@ def main():
             coefs = model.params.reset_index()
             coefs.columns = ["Variable", "Coeficiente"]
             coefs["p-valor"] = model.pvalues.values
-            coefs["Interpretación"] = ["Incrementa" if c > 0 else "Reduce" for c in coefs["Coeficiente"]]
+            coefs["Interpretación"] = [
+                "Incrementa" if c > 0 else "Reduce"
+                for c in coefs["Coeficiente"]
+            ]
             st.dataframe(coefs)
 
         else:  # MNL
@@ -136,21 +147,20 @@ def main():
             prob_df = predict_mnl(model, df, FEATURES)
             st.dataframe(prob_df)
 
-            # Gráfico de probabilidades
             st.subheader("Probabilidades (gráfico)")
             st.line_chart(prob_df)
 
-            # Simulación MNL
             st.subheader("Simulación interactiva MNL")
             sim_vals = {}
             for feat in FEATURES:
-                mi, ma = float(df[feat].min()), float(df[feat].max())
-                sim_vals[feat] = st.slider(feat, mi, ma, float(df[feat].median()))
-            df_new = pd.DataFrame([{feat: sim_vals[feat] for feat in FEATURES}])
-            sim_probs = predict_mnl(model, df_new, FEATURES)
-            st.dataframe(sim_probs)
+                lo, hi = float(df[feat].min()), float(df[feat].max())
+                sim_vals[feat] = st.slider(feat, lo, hi, float(df[feat].median()))
+            df_new = pd.DataFrame([sim_vals])
+            simp = predict_mnl(model, df_new, FEATURES)
+            st.dataframe(simp)
 
-        st.sidebar.markdown(f"Paso 2: Econometría {'✅' if model else '⬜'}")
+        steps_status[2] = "✅" if model else "⬜"
+        st.sidebar.markdown(f"Paso 2: Econometría {steps_status[2]}")
 
     if model is None:
         return
@@ -168,44 +178,41 @@ def main():
                 ans = st.text_input(f"{i}. {q}", key=f"ans_{i}")
                 EpistemicNavigator.record(q, ans)
             if subqs:
-                st.success(f"{len(subqs)} subpreguntas registradas.")
+                st.success(f"{len(subqs)} subpreguntas generadas.")
 
+        # Mostrar métricas EEE
         tracker = EpistemicNavigator.get_tracker()
-        steps = tracker.get("steps", [])
-        if steps:
+        if tracker["steps"]:
             st.subheader("Métricas Epistémicas (EEE)")
             metrics = compute_eee(tracker, max_steps=10)
-            eeedf = pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"])
-            eeedf.index.name = "Dimensión"
-            st.table(eeedf)
+            df_eee = pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"])
+            df_eee.index.name = "Dimensión"
+            st.table(df_eee)
+            steps_status[3] = "✅"
         else:
-            st.info("Registra al menos una respuesta para ver las métricas EEE.")
+            st.info("Responde al menos una subpregunta para ver EEE.")
 
-        st.sidebar.markdown("Paso 3: Deliberación ⚙️")
+        st.sidebar.markdown(f"Paso 3: Deliberación {steps_status[3]}")
 
     # --- 4. Diagnóstico ---
     with tabs[3]:
         st.header("4. Diagnóstico del modelo")
         diagnostics = check_model_diagnostics(df, model, FEATURES)
         st.json(diagnostics)
-        st.sidebar.markdown("Paso 4: Diagnóstico ✅")
+        steps_status[4] = "✅"
+        st.sidebar.markdown(f"Paso 4: Diagnóstico {steps_status[4]}")
 
     # --- 5. Informe ---
     with tabs[4]:
         st.header("5. Informe final")
         if st.button("Generar informe"):
-            report_bytes = build_report(df, model, st.session_state.engine, diagnostics)
-            is_pdf = report_bytes[:4] == b"%PDF"
-            filename = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
-            mime = "application/pdf" if is_pdf else "text/plain"
-            st.download_button(
-                "📥 Descargar Informe",
-                data=report_bytes,
-                file_name=filename,
-                mime=mime
-            )
-            st.success("Informe listo para descargar.")
-        st.sidebar.markdown("Paso 5: Informe 📄")
+            report = build_report(df, model, st.session_state.engine, diagnostics)
+            is_pdf = report[:4] == b"%PDF"
+            name = "informe.pdf" if is_pdf else "informe.txt"
+            mtype = "application/pdf" if is_pdf else "text/plain"
+            st.download_button("📥 Descargar Informe", report, name, mtype)
+            steps_status[5] = "✅"
+        st.sidebar.markdown(f"Paso 5: Informe {steps_status[5]}")
 
 if __name__ == "__main__":
     main()

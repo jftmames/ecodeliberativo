@@ -1,99 +1,69 @@
-try:
-    from fpdf import FPDF
-    _HAS_FPDF = True
-except ImportError:
-    _HAS_FPDF = False
+# report_generator.py
 
-import json
+import io
+from typing import Any, Dict
+from epistemic_metrics import compute_eee
+from navigator import EpistemicNavigator
 
 
-def build_report(df, model, engine, diagnostics) -> bytes:
+def build_report(
+    df: Any,
+    model: Any,
+    engine: Any,
+    diagnostics: Dict[str, Any],
+) -> bytes:
     """
-    Construye un informe (PDF si fpdf está instalado, o texto plano en bytes).
+    Construye un informe en texto plano (UTF-8) que incluye:
+      1. Resumen de los datos.
+      2. Resumen del modelo (summary).
+      3. Diagnósticos del modelo.
+      4. Registro de deliberación (preguntas y respuestas).
+      5. Métricas EEE derivadas del tracker epistémico.
+    Devuelve el contenido listo para descargar.
     """
-    if not _HAS_FPDF:
-        # Fallback: generar informe en texto plano
-        lines = []
-        lines.append("Informe Simulador Econométrico-Deliberativo")
-        lines.append("\n1. Estadísticas de Datos:")
-        lines.extend(df.describe().to_string().split('\n'))
-        lines.append("\n2. Coeficientes del Modelo:")
-        try:
-            params = model.params
-            for var, coef in params.items():
-                lines.append(f"{var}: {coef:.4f}")
-        except Exception:
-            lines.append("No disponible para este modelo.")
-        lines.append("\n3. Log de Deliberación:")
-        log = engine.get_log() if hasattr(engine, 'get_log') else []
-        if log:
-            for entry in log:
-                q = entry.get('question', '')
-                a = entry.get('answer', '')
-                lines.append(f"Q: {q}")
-                lines.append(f"A: {a}")
-        else:
-            lines.append("Sin registro de deliberación.")
-        lines.append("\n4. Diagnósticos del Modelo:")
-        diag_text = json.dumps(diagnostics, indent=2)
-        lines.extend(diag_text.split('\n'))
-        return "\n".join(lines).encode('utf-8')
+    buf = io.StringIO()
 
-    # Con fpdf disponible, generar PDF
-    pdf = FPDF()
-    pdf.add_page()
-    pdf.set_font("Arial", "B", 16)
-    pdf.cell(0, 10, "Informe Simulador Econométrico-Deliberativo", ln=True, align='C')
-    pdf.ln(5)
-    # Datos
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "1. Estadísticas de Datos", ln=True)
-    pdf.set_font("Arial", "", 10)
-    for line in df.describe().to_string().split("\n"):
-        pdf.cell(0, 5, line, ln=True)
-    pdf.ln(5)
-    # Coeficientes
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "2. Coeficientes del Modelo", ln=True)
-    pdf.set_font("Arial", "", 10)
+    # 1. Encabezado y datos
+    buf.write("=== INFORME DELIBERATIVO ===\n\n")
+    buf.write("1. RESUMEN DE DATOS\n")
+    buf.write(f"- Observaciones: {df.shape[0]}\n")
+    buf.write(f"- Variables (incluyendo Y): {', '.join(df.columns.tolist())}\n\n")
+
+    # 2. Modelo
+    buf.write("2. RESUMEN DEL MODELO ESTIMADO\n")
     try:
-        for var, coef in model.params.items():
-            pdf.cell(0, 5, f"{var}: {coef:.4f}", ln=True)
+        summary_text = model.summary().as_text()
     except Exception:
-        pdf.cell(0, 5, "No disponible para este modelo.", ln=True)
-    pdf.ln(5)
-    # Deliberación
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "3. Log de Deliberación", ln=True)
-    pdf.set_font("Arial", "", 10)
-    log = engine.get_log() if hasattr(engine, 'get_log') else []
-    if log:
-        for entry in log:
-            q = entry.get('question', '')
-            a = entry.get('answer', '')
-            pdf.multi_cell(0, 5, f"Q: {q}\nA: {a}\n")
-    else:
-        pdf.cell(0, 5, "Sin registro de deliberación.", ln=True)
-    pdf.ln(5)
-    # Diagnósticos
-    pdf.set_font("Arial", "B", 12)
-    pdf.cell(0, 8, "4. Diagnósticos del Modelo", ln=True)
-    pdf.set_font("Arial", "", 10)
-    for line in json.dumps(diagnostics, indent=2).split("\n"):
-        pdf.cell(0, 5, line, ln=True)
-    return pdf.output(dest='S').encode('latin-1')
+        # En caso de modelos MNL u otros sin .summary()
+        summary_text = str(model)
+    buf.write(summary_text + "\n\n")
 
+    # 3. Diagnósticos
+    buf.write("3. DIAGNÓSTICOS DEL MODELO\n")
+    for key, val in diagnostics.items():
+        buf.write(f"- {key}: {val}\n")
+    buf.write("\n")
 
-def export_pdf(report_bytes: bytes, filename: str) -> None:
-    """
-    Guarda informe (PDF o texto plano) en disco.
-    """
-    mode = 'wb'
-    data = report_bytes
-    # Si es texto plano, guardar en UTF-8
-    if not _HAS_FPDF:
-        with open(filename.replace('.pdf', '.txt'), mode) as f:
-            f.write(data)
+    # 4. Deliberación epistémica
+    buf.write("4. DELIBERACIÓN EPISTÉMICA\n")
+    tracker = EpistemicNavigator.get_tracker()
+    steps = tracker.get("steps", [])
+    if steps:
+        for i, step in enumerate(steps, start=1):
+            q = step.get("question", "")
+            a = step.get("answer", "")
+            buf.write(f"{i}. Pregunta: {q}\n")
+            buf.write(f"   Respuesta: {a}\n\n")
     else:
-        with open(filename, mode) as f:
-            f.write(data)
+        buf.write("No hay pasos de deliberación registrados.\n\n")
+
+    # 5. Métricas EEE
+    buf.write("5. MÉTRICAS EPISTÉMICAS (EEE)\n")
+    metrics = compute_eee(tracker, max_steps=10)
+    for dim, val in metrics.items():
+        buf.write(f"- {dim}: {val:.3f}\n")
+
+    # Resultado final
+    text = buf.getvalue()
+    buf.close()
+    return text.encode("utf-8")

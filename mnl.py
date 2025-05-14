@@ -1,41 +1,29 @@
+# mnl.py
+
 import pandas as pd
-import numpy as np
 import statsmodels.api as sm
+from statsmodels.discrete.discrete_model import MNLogit
 
-
-def fit_mnl(df: pd.DataFrame, features: list[str]) -> sm.MNLogit:
+def fit_mnl(df: pd.DataFrame, features: list[str]):
     """
-    Ajusta un modelo Logit Multinomial (MNLogit) a los datos.
-
-    df: DataFrame con las columnas de features y la columna 'Y' como variable dependiente categórica.
-    features: lista de nombres de columnas independientes.
+    Ajusta un modelo de elección múltiple (MNLogit) sobre df,
+    usando las columnas `features` como regresoras y 'Y' como variable dependiente.
     """
-    # Matriz de regresores con constante
-    X = sm.add_constant(df[features])
-    # Variable dependiente
-    y = df['Y']
-    # Ajuste de MNLogit
-    model = sm.MNLogit(y, X).fit(disp=False)
+    # Añadimos constante
+    X = sm.add_constant(df[features], has_constant="add")
+    y = df["Y"]
+    model = MNLogit(y, X).fit(disp=False)
     return model
 
-
-def predict_mnl(model: sm.MNLogit, df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
+def predict_mnl(model, df: pd.DataFrame, features: list[str]) -> pd.DataFrame:
     """
-    Calcula las probabilidades predichas por un modelo MNLogit.
-
-    model: objeto resultado de fit_mnl.
-    df: DataFrame con las mismas features.
-    features: lista de nombres de columnas independientes.
+    Dada la instancias en df (solo con las columnas `features`),
+    añade constante y devuelve un DataFrame con las probabilidades
+    de cada alternativa según el modelo MNLogit ajustado.
     """
-    X = sm.add_constant(df[features])
+    # Asegurarnos de que la constante está incluida
+    X = sm.add_constant(df[features], has_constant="add")
+    # model.predict espera un array 2D, con misma orden de columnas que en fit
     probs = model.predict(X)
-    # Obtener etiquetas de cada clase según el endog original
-    endog = model.model.endog
-    categories = sorted(np.unique(endog))
-    # Asegurar que coincide el número de columnas
-    if probs.shape[1] != len(categories):
-        # Asignar nombres genéricos
-        col_names = [f"class_{i}" for i in range(probs.shape[1])]
-    else:
-        col_names = [str(c) for c in categories]
-    return pd.DataFrame(probs, columns=col_names)
+    # `model.model.endog_names` contiene los nombres de las alternativas
+    return pd.DataFrame(probs, columns=model.model.endog_names)

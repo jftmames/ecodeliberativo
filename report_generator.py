@@ -1,46 +1,51 @@
+# report_generator.py
+
 import io
 import pandas as pd
 
 def build_report(df, model, engine, diagnostics: dict) -> bytes:
     """
-    Genera un informe en texto plano que incluye:
-     - Resumen del dataset
-     - Resumen del modelo (texto)
-     - Diagnósticos
-     - Pasos deliberativos y métricas EEE
+    Genera un informe de texto plano con:
+      - Resumen de datos
+      - Resumen del modelo
+      - Diagnósticos
+      - Pasos de deliberación
+      - Métricas EEE
+    Devuelve un bytes object (texto UTF-8).
     """
     buf = io.StringIO()
+    buf.write("=== Informe Deliberativo ===\n\n")
 
-    # 1. Datos
-    buf.write("=== Informe Simulador Econométrico-Deliberativo ===\n\n")
-    buf.write("**Resumen de datos**\n")
-    buf.write(df.describe().to_string())
+    # Datos
+    buf.write("1) Datos (primeras 5 filas):\n")
+    buf.write(df.head().to_string(index=False))
     buf.write("\n\n")
 
-    # 2. Modelo
-    buf.write("**Resumen del modelo**\n")
+    # Modelo
+    buf.write("2) Resumen del Modelo:\n")
     buf.write(model.summary().as_text())
     buf.write("\n\n")
 
-    # 3. Diagnóstico
-    buf.write("**Diagnósticos**\n")
+    # Diagnósticos
+    buf.write("3) Diagnósticos:\n")
     for k, v in diagnostics.items():
-        buf.write(f"- {k}: {v}\n")
+        buf.write(f"  - {k}: {v:.4f}\n")
     buf.write("\n")
 
-    # 4. Deliberación
-    buf.write("**Pasos deliberativos**\n")
-    tracker = engine  # en ui.py le pasamos st.session_state.engine
-    steps = tracker.get_tracker().get("steps", [])
-    for i, s in enumerate(steps, 1):
-        buf.write(f"{i}. Q: {s['question']}\n   A: {s['answer']}\n")
+    # Deliberación
+    buf.write("4) Pasos de deliberación:\n")
+    tracker = engine.get_tracker() if hasattr(engine, 'get_tracker') else {}
+    steps = tracker.get("steps", [])
+    for i, step in enumerate(steps, 1):
+        buf.write(f"  {i}. Q: {step['question']}\n")
+        buf.write(f"     A: {step['answer']}\n")
     buf.write("\n")
 
-    # 5. Métricas EEE
+    # Métricas EEE
     from epistemic_metrics import compute_eee
-    metrics = compute_eee(tracker.get_tracker(), max_steps=10)
-    buf.write("**Métricas Epistémicas (EEE)**\n")
-    for dim, val in metrics.items():
-        buf.write(f"- {dim}: {val:.3f}\n")
+    metrics = compute_eee(tracker)
+    buf.write("5) Métricas Epistémicas (EEE):\n")
+    for k, v in metrics.items():
+        buf.write(f"  - {k}: {v:.4f}\n")
 
     return buf.getvalue().encode("utf-8")

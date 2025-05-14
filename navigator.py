@@ -1,26 +1,44 @@
+# navigator.py
+
 import streamlit as st
 
 class EpistemicNavigator:
     """
-    Clase encargada de registrar y gestionar las respuestas a subpreguntas
-    generadas por el motor de deliberación.
+    Gestiona el registro y recuperación del tracker epistémico
+    usando st.session_state para persistencia por sesión.
     """
+    @staticmethod
+    def _ensure_tracker():
+        if "epistemic_tracker" not in st.session_state:
+            st.session_state["epistemic_tracker"] = {"steps": []}
 
     @staticmethod
-    def record(question: str, answer: str) -> None:
+    def record(question: str, answer: str, metadata: dict = None):
         """
-        Guarda en st.session_state un diccionario con preguntas y respuestas.
+        Registra una nueva interacción (pregunta + respuesta + metadata opcional)
+        en el tracker epistémico.
         """
-        if "deliberation_log" not in st.session_state:
-            st.session_state.deliberation_log = []
-        st.session_state.deliberation_log.append({
+        EpistemicNavigator._ensure_tracker()
+        step = {
             "question": question,
-            "answer": answer
-        })
+            "answer": answer or "",
+        }
+        if metadata:
+            step["metadata"] = metadata
+        st.session_state["epistemic_tracker"]["steps"].append(step)
 
     @staticmethod
-    def get_log() -> list[dict]:
+    def get_tracker() -> dict:
         """
-        Devuelve el log completo de preguntas y respuestas.
+        Devuelve el estado completo del tracker epistémico:
+        {'steps': [ {question, answer, metadata?}, ... ] }
         """
-        return st.session_state.get("deliberation_log", [])
+        EpistemicNavigator._ensure_tracker()
+        return st.session_state["epistemic_tracker"]
+
+    @staticmethod
+    def reset_tracker():
+        """
+        Reinicia el tracker, eliminando todos los pasos registrados.
+        """
+        st.session_state["epistemic_tracker"] = {"steps": []}

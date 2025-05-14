@@ -2,7 +2,6 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
-import plotly.express as px
 
 from statsmodels.discrete.discrete_model import Logit
 from statsmodels.regression.linear_model import OLS
@@ -90,33 +89,25 @@ def main():
             st.subheader("Elasticidades")
             st.table(elas_df)
 
-            # Gráfico de elasticidades
+            # Gráfico de elasticidades con Streamlit
             st.subheader("Elasticidades (gráfico)")
-            fig_elas = px.bar(
-                elas_df,
-                x="Variable",
-                y="Elasticidad",
-                title="Elasticidades de las Variables",
-                text="Elasticidad"
-            )
-            st.plotly_chart(fig_elas, use_container_width=True)
+            chart_data = elas_df.set_index("Variable")["Elasticidad"]
+            st.bar_chart(chart_data)
 
             # Curva de probabilidad vs precio
             if "precio" in FEATURES:
-                st.subheader("Curva de Probabilidad vs Precio")
+                st.subheader("Probabilidad vs Precio")
                 precio_min, precio_max = df["precio"].min(), df["precio"].max()
                 precio_grid = np.linspace(precio_min, precio_max, 100)
                 df_grid = pd.DataFrame({feat: df[feat].mean() for feat in FEATURES}, index=precio_grid)
                 df_grid["precio"] = precio_grid
                 X_grid = sm.add_constant(df_grid[FEATURES], has_constant="add")
                 prob_grid = model.predict(X_grid)
-                fig_prob = px.line(
-                    x=precio_grid,
-                    y=prob_grid,
-                    labels={"x": "Precio", "y": "P(Y=1)"},
-                    title="Probabilidad Predicha vs Precio"
-                )
-                st.plotly_chart(fig_prob, use_container_width=True)
+                prob_df = pd.DataFrame({
+                    "precio": precio_grid,
+                    "P(Y=1)": prob_grid
+                }).set_index("precio")
+                st.line_chart(prob_df)
 
             # Simulación interactiva
             st.subheader("Simulación de Probabilidad")
@@ -149,14 +140,7 @@ def main():
 
             # Gráfico de probabilidades
             st.subheader("Probabilidades Predichas (gráfico)")
-            fig_mnl = px.line(
-                prob_df.reset_index(),
-                x="index",
-                y=prob_df.columns.tolist(),
-                labels={"value": "Probabilidad", "index": "Observación"},
-                title="Probabilidades Predichas por Alternativa"
-            )
-            st.plotly_chart(fig_mnl, use_container_width=True)
+            st.line_chart(prob_df)
 
             # Simulación interactiva
             st.subheader("Simulación de Probabilidades MNL")
@@ -215,4 +199,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

@@ -30,36 +30,31 @@ def estimate_tobit(X, y, left=0, right=np.inf):
     res = mod.fit()
     return res
 
-def estimate_nested_logit(X, y, nests, choices_col="choice"):
+def estimate_nested_logit_pylogit(df_long, nests, alt_id_col="alt_id", obs_id_col="obs_id", choice_col="choice"):
     """
-    Nested logit con pylogit (instala con pip install pylogit).
-    X: DataFrame con variables independientes.
-    y: Serie o array de alternativas elegidas (enteros).
-    nests: dict tipo {nombre_nest: [opciones_alternativa_en_nest, ...]}
-    choices_col: nombre de la columna de alternativas elegidas.
+    Ajusta un modelo Nested Logit con pylogit sobre un DataFrame apilado.
+    - df_long: DataFrame en formato long (apilado)
+    - nests: dict {nest_id: [alt_id1, alt_id2, ...], ...}
     """
     try:
         import pylogit
     except ImportError:
         raise ImportError("Instala pylogit para usar Nested Logit: pip install pylogit")
-    
-    # pylogit espera un DataFrame especial con columnas 'obs_id_col', 'alt_id_col', 'choice_col'
-    # Suponemos que cada fila es una alternativa para una observación
-    # Si tienes datos apilados por individuo, adapta este bloque según tu estructura
-    raise NotImplementedError("Adapta este bloque a tu formato de datos stacked (pylogit).")
-    # Ejemplo (ajustar a tus datos):
-    # model = pylogit.create_choice_model(
-    #     data=df,
-    #     alt_id_col='alt_id',
-    #     obs_id_col='obs_id',
-    #     choice_col=choices_col,
-    #     specification=...,
-    #     model_type="Nested Logit",
-    #     names=...
-    #     nest_spec=nests,
-    # )
-    # model.fit_mle()
-    # return model
+
+    # Sólo se utiliza la variable 'precio' como ejemplo (ajusta aquí según tus features)
+    specification = {col: ["all_alternatives"] for col in df_long.columns if col not in [alt_id_col, obs_id_col, choice_col, "nest"]}
+    model = pylogit.create_choice_model(
+        data=df_long,
+        alt_id_col=alt_id_col,
+        obs_id_col=obs_id_col,
+        choice_col=choice_col,
+        specification=specification,
+        model_type="Nested Logit",
+        names={col: col.capitalize() for col in specification.keys()},
+        nest_spec=nests
+    )
+    model.fit_mle(init_vals=None)
+    return model
 
 def estimate_model(model_name, X, y, **kwargs):
     if model_name == "OLS":
@@ -72,7 +67,5 @@ def estimate_model(model_name, X, y, **kwargs):
         return estimate_poisson(X, y)
     elif model_name == "Tobit":
         return estimate_tobit(X, y, **kwargs)
-    elif model_name == "Nested Logit":
-        return estimate_nested_logit(X, y, **kwargs)
     else:
         raise ValueError(f"Modelo no soportado: {model_name}")

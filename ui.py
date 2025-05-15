@@ -171,35 +171,31 @@ def main():
                         EpistemicNavigator.record(q, ans, parent=0)
 
                 st.markdown("**Añadir subpregunta manual:**")
-                # Input separado, con valor gestionado por sesión
+                # Utiliza auxiliar para mantener y resetear el valor
                 new_subq = st.text_input(
                     "Nueva subpregunta",
-                    key="manual_subq_input",
                     value=st.session_state.manual_subq_val,
+                    key="manual_subq_input",
                     placeholder="Introduce una subpregunta y pulsa Añadir",
                 )
+                # Sincroniza la variable auxiliar
+                st.session_state.manual_subq_val = new_subq
 
                 if st.button("Añadir subpregunta manual"):
                     if new_subq.strip():
                         EpistemicNavigator.add_step(new_subq.strip(), parent=0)
-                        # Reseteo automático del campo
+                        # Reseteo automático del campo (sin modificar el key del widget)
                         st.session_state.manual_subq_val = ""
-                        st.session_state["manual_subq_input"] = ""
                         st.experimental_rerun()
                         return
                     else:
                         st.warning("La subpregunta no puede estar vacía.")
-
-                # Reseteo automático del input al detectar cambio en sesión
-                if st.session_state.get("manual_subq_input", "") != st.session_state.get("manual_subq_val", ""):
-                    st.session_state.manual_subq_val = st.session_state["manual_subq_input"]
 
                 if st.button("Limpiar razonamiento"):
                     EpistemicNavigator.clear_tracker()
                     st.session_state.root_prompt = None
                     st.session_state.subqs = []
                     st.session_state.manual_subq_val = ""
-                    st.session_state["manual_subq_input"] = ""
                     st.experimental_rerun()
                     return
 

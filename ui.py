@@ -51,11 +51,13 @@ def main():
         if not FEATURES:
             st.warning("Selecciona al menos una variable.")
         st.sidebar.markdown(f"Paso 1: Datos {'✅' if FEATURES else '⬜'}")
+        st.session_state.FEATURES = FEATURES  # Para acceso robusto entre tabs
 
     # --- 2. Econometría ---
-    model = None
     with tabs[1]:
         st.header("2. Econometría")
+        FEATURES = st.session_state.get("FEATURES", [])
+        model = st.session_state.get("model", None)
         if not FEATURES:
             st.warning("Selecciona variables explicativas en la pestaña de datos.")
         else:
@@ -70,6 +72,7 @@ def main():
             if model_name == "MNL":
                 st.info("Modelo MNL seleccionado")
                 model = fit_mnl(df, FEATURES)
+                st.session_state.model = model
                 st.markdown("#### Probabilidades (dataset completo)")
                 prob_df = predict_mnl(model, df, FEATURES)
                 st.dataframe(prob_df)
@@ -88,6 +91,7 @@ def main():
                 if st.button(f"Estimar modelo {model_name}"):
                     with st.spinner(f"Estimando modelo {model_name}..."):
                         model = estimate_model(model_name, X, y)
+                        st.session_state.model = model
                         st.success(f"Modelo {model_name} estimado correctamente.")
                         st.write("Resumen del modelo:")
                         st.text(model.summary())
@@ -133,11 +137,12 @@ def main():
                     else:
                         st.write(f"**Y estimado** = {pred:.3f}")
 
-        st.sidebar.markdown(f"Paso 2: Econometría {'✅' if model is not None else '⬜'}")
+        st.sidebar.markdown(f"Paso 2: Econometría {'✅' if st.session_state.get('model', None) is not None else '⬜'}")
 
     # --- 3. Deliberación ---
     with tabs[2]:
         st.header("3. Deliberación epistémica")
+        FEATURES = st.session_state.get("FEATURES", [])
         if "engine" not in st.session_state:
             st.session_state.engine = DeliberationEngine()
         if "root_prompt" not in st.session_state:
@@ -171,7 +176,6 @@ def main():
                         EpistemicNavigator.record(q, ans, parent=0)
 
                 st.markdown("**Añadir subpregunta manual:**")
-                # Key rotatorio para reset automático del input tras añadir
                 new_subq = st.text_input(
                     "Nueva subpregunta",
                     key=f"manual_subq_input_{st.session_state.manual_subq_key}",
@@ -182,9 +186,8 @@ def main():
                 if add_manual:
                     if new_subq.strip():
                         EpistemicNavigator.add_step(new_subq.strip(), parent=0)
-                        st.session_state.manual_subq_key += 1  # Cambia key, limpia input
+                        st.session_state.manual_subq_key += 1
                         st.success("Subpregunta añadida.")
-                        # ¡NO uses rerun aquí!
                     else:
                         st.warning("La subpregunta no puede estar vacía.")
 
@@ -224,6 +227,8 @@ def main():
     # --- 4. Diagnóstico ---
     with tabs[3]:
         st.header("4. Diagnóstico del modelo")
+        FEATURES = st.session_state.get("FEATURES", [])
+        model = st.session_state.get("model", None)
         if model is None:
             st.warning("Debes estimar un modelo primero en la pestaña Econometría.")
             st.stop()
@@ -234,10 +239,13 @@ def main():
     # --- 5. Informe ---
     with tabs[4]:
         st.header("5. Informe final")
+        FEATURES = st.session_state.get("FEATURES", [])
+        model = st.session_state.get("model", None)
         if model is None:
             st.warning("Debes estimar un modelo primero en la pestaña Econometría.")
             st.stop()
         if st.button("Generar informe"):
+            diagnostics = check_model_diagnostics(df, model, FEATURES)
             report_bytes = build_report(df, model, st.session_state.engine, diagnostics)
             is_pdf = report_bytes[:4] == b"%PDF"
             filename = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
@@ -251,3 +259,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

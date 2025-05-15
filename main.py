@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 from econometrics import run_model
 from deliberation_engine import preguntar_deliberativo
+from report_generator import generar_informe_html
 
 def main():
     st.title("Simulador Econométrico-Deliberativo")
 
-    # 1. Modo de uso (informativo, puede usarse para personalizar el flujo en el futuro)
+    # 1. Selección de modo de uso
     modo = st.sidebar.selectbox("Modo de uso", ["Docente", "Consultor", "Institucional"])
 
     # 2. Carga de datos
@@ -39,14 +40,14 @@ def main():
         "Logit", "Probit", "Tobit", "MNL", "OLS", "Poisson"
     ])
 
-    # 5. Parámetros extra (ejemplo: Tobit)
+    # 5. Parámetros extra (Tobit)
     params = {}
     if modelo == "Tobit":
         st.sidebar.markdown("**Parámetros Tobit**")
         params["left"] = st.sidebar.number_input("Límite inferior (left)", value=0.0)
         params["right"] = st.sidebar.number_input("Límite superior (right)", value=float("inf"))
 
-    # 6. Ejecución y visualización de resultados
+    # 6. Ejecución del modelo y deliberación
     if st.button("Ejecutar modelo"):
         try:
             result_dict = run_model(df, modelo, y_var, x_vars, **params)
@@ -58,7 +59,7 @@ def main():
             st.subheader("Coeficientes del modelo")
             st.dataframe(result_dict["coef"].to_frame(name="Coeficiente"))
 
-            # --- INTEGRACIÓN DELIBERATIVA: Captura de respuestas ---
+            # Preguntas y respuestas deliberativas
             st.subheader("Preguntas para el razonamiento deliberativo")
             respuestas_usuario = preguntar_deliberativo(result_dict["questions"])
 
@@ -66,7 +67,7 @@ def main():
             for i, (preg, resp) in enumerate(respuestas_usuario.items(), 1):
                 st.markdown(f"**{i}. {preg}**<br>{resp}", unsafe_allow_html=True)
 
-            # --- Descarga de respuestas deliberativas
+            # Descarga de respuestas deliberativas
             delib_df = pd.DataFrame(list(respuestas_usuario.items()), columns=["Pregunta", "Respuesta"])
             st.download_button(
                 label="Descargar respuestas deliberativas (CSV)",
@@ -75,11 +76,11 @@ def main():
                 mime="text/csv"
             )
 
-            # --- Diagnóstico automático del modelo
+            # Diagnóstico automático
             st.subheader("Diagnóstico automático del modelo")
             st.json(result_dict["diagnostics"])
 
-            # --- Descarga de coeficientes y diagnóstico ---
+            # Descarga de coeficientes y diagnóstico
             st.download_button(
                 label="Descargar coeficientes como CSV",
                 data=result_dict["coef"].to_csv().encode("utf-8"),
@@ -93,6 +94,28 @@ def main():
                 file_name=f"diagnostico_{modelo.lower()}.csv",
                 mime="text/csv"
             )
+
+            # --- Generación y visualización de informe HTML ---
+            st.markdown("---")
+            st.subheader("Informe deliberativo")
+            if st.button("Generar informe HTML"):
+                informe_html = generar_informe_html(
+                    modo=modo,
+                    modelo=modelo,
+                    y_var=y_var,
+                    x_vars=x_vars,
+                    resumen=result_dict["summary"],
+                    coef=result_dict["coef"],
+                    diagnostico=result_dict["diagnostics"],
+                    deliberacion=list(respuestas_usuario.items())
+                )
+                st.components.v1.html(informe_html, height=800, scrolling=True)
+                st.download_button(
+                    label="Descargar informe HTML",
+                    data=informe_html.encode("utf-8"),
+                    file_name="informe_deliberativo.html",
+                    mime="text/html"
+                )
         except Exception as e:
             st.error(f"Error al ejecutar el modelo: {e}")
     else:

@@ -20,7 +20,11 @@ def main():
     st.sidebar.header("Datos de análisis")
     data_source = st.sidebar.radio("¿Cómo quieres cargar los datos?", ["Ejemplo", "Subir CSV"])
     if data_source == "Ejemplo":
-        df = pd.read_csv("data/ejemplo.csv")
+        try:
+            df = pd.read_csv("data/ejemplo.csv")
+        except FileNotFoundError:
+            st.error("No se encontró el archivo de ejemplo en la ruta 'data/ejemplo.csv'.")
+            st.stop()
     else:
         uploaded_file = st.sidebar.file_uploader("Sube tu archivo CSV", type="csv")
         if uploaded_file is not None:
@@ -50,13 +54,7 @@ def main():
         if not modelos_seleccionados:
             st.stop()
 
-    params_dict = {}
-    for modelo in modelos_seleccionados:
-        if modelo == "Tobit":
-            # No se usará pero se deja por compatibilidad
-            params_dict[modelo] = {}
-        else:
-            params_dict[modelo] = {}
+    params_dict = {modelo: {} for modelo in modelos_seleccionados}
 
     resultados_modelos = {}
     eees = {}
@@ -75,12 +73,21 @@ def main():
             except Exception as e:
                 st.error(f"Error en modelo {modelo}: {e}")
 
+    # Determinar modelo principal válido para uso en tabs
+    modelo_ref = None
+    if resultados_modelos:
+        for m in modelos_seleccionados:
+            if m in resultados_modelos:
+                modelo_ref = m
+                break
+
     tab1, tab2, tab3, tab4 = st.tabs(["Análisis", "Deliberación", "Simulación", "Resultados e Informe"])
 
     with tab1:
         st.header("1️⃣ Dashboard de Análisis y Visualización")
-        if resultados_modelos:
-            modelo_ref = modelos_seleccionados[0]
+        if not modelo_ref:
+            st.info("Ejecuta primero los modelos para ver análisis.")
+        else:
             res = resultados_modelos[modelo_ref]
             col1, col2, col3 = st.columns(3)
             with col1:
@@ -122,13 +129,12 @@ def main():
                 fig_comp.add_trace(go.Bar(x=comp_df["Modelo"], y=comp_df["BIC"], name="BIC"))
                 fig_comp.update_layout(barmode='group', title="Comparativa AIC/BIC")
                 st.plotly_chart(fig_comp, use_container_width=True)
-        else:
-            st.info("Ejecuta primero los modelos para ver análisis.")
 
     with tab2:
         st.header("2️⃣ Deliberación estructurada y feedback")
-        if resultados_modelos:
-            modelo_ref = modelos_seleccionados[0]
+        if not modelo_ref:
+            st.info("Ejecuta primero un modelo y responde a las preguntas para deliberar.")
+        else:
             res = resultados_modelos[modelo_ref]
 
             st.subheader("Preguntas para el razonamiento deliberativo")
@@ -175,13 +181,12 @@ def main():
                 file_name="respuestas_deliberativas.csv",
                 mime="text/csv"
             )
-        else:
-            st.info("Ejecuta primero un modelo y responde a las preguntas para deliberar.")
 
     with tab3:
         st.header("3️⃣ Simulación contrafactual")
-        if resultados_modelos:
-            modelo_ref = modelos_seleccionados[0]
+        if not modelo_ref:
+            st.info("Ejecuta primero un modelo para simular escenarios contrafactuales.")
+        else:
             res = resultados_modelos[modelo_ref]
 
             st.write("Ajusta valores para simular un escenario contrafactual:")
@@ -210,13 +215,12 @@ def main():
                     st.plotly_chart(fig_cf, use_container_width=True)
             except Exception as e:
                 st.warning(f"No se pudo calcular la predicción contrafactual: {e}")
-        else:
-            st.info("Ejecuta primero un modelo para simular escenarios contrafactuales.")
 
     with tab4:
         st.header("4️⃣ Resultados completos, diagnósticos y exportación de informe")
-        if resultados_modelos:
-            modelo_ref = modelos_seleccionados[0]
+        if not modelo_ref:
+            st.info("Ejecuta primero un modelo para ver y descargar resultados.")
+        else:
             res = resultados_modelos[modelo_ref]
             st.subheader("Resumen del modelo principal")
             st.text(res["summary"])
@@ -264,8 +268,6 @@ def main():
                     file_name="informe_deliberativo.html",
                     mime="text/html"
                 )
-        else:
-            st.info("Ejecuta primero un modelo para ver y descargar resultados.")
 
 if __name__ == "__main__":
     main()

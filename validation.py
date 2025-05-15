@@ -11,11 +11,11 @@ def check_model_diagnostics(
     df: pd.DataFrame,
     model: Any,
     features: List[str],
-    target: str
+    target: str = None
 ) -> Dict[str, Any]:
     """
     Ajusta diagnósticos básicos para un modelo de regresión.
-    
+
     Parámetros
     ----------
     df : pd.DataFrame
@@ -24,9 +24,9 @@ def check_model_diagnostics(
         Objeto entrenado con método .predict(X).
     features : List[str]
         Lista de nombres de columnas usadas como regresores.
-    target : str
-        Nombre de la columna objetivo.
-    
+    target : str, opcional
+        Nombre de la columna objetivo. Si no se especifica, se toma la última columna de df.
+
     Devuelve
     -------
     dict
@@ -37,6 +37,10 @@ def check_model_diagnostics(
             'residuals': pd.Series      # residuos calculados
         }
     """
+
+    # Si no se indica target, lo inferimos como la última columna del DataFrame
+    if target is None:
+        target = df.columns[-1]
 
     # 1) Preparar X e y
     X = df[features]
@@ -63,7 +67,6 @@ def check_model_diagnostics(
     data['resid'] = data[target] - data['pred']
 
     # 4) Heterocedasticidad: Breusch–Pagan
-    #    Regresores en forma de matriz (statsmodels los requiere así)
     bp_test = het_breuschpagan(data['resid'], X)
     bp_pvalue = bp_test[3]
 

@@ -26,7 +26,6 @@ def load_example_data():
     return df
 
 def reset_session_state():
-    """Reset total de todas las variables al cargar nuevos datos."""
     st.session_state.model = None
     st.session_state.FEATURES = []
     st.session_state.root_prompt = None
@@ -76,7 +75,6 @@ def main():
             return
         else:
             df = st.session_state.df
-        st.write(df.head())
         FEATURES = st.multiselect(
             "Selecciona variables explicativas:",
             [c for c in df.columns if c != "Y"],
@@ -181,8 +179,25 @@ def main():
     with tabs[2]:
         st.header("3. Deliberación epistémica")
         FEATURES = st.session_state.FEATURES
+        model = st.session_state.model
+
         if not FEATURES:
             st.warning("Debes seleccionar variables explicativas en la pestaña de datos para deliberar.")
+        elif model is None:
+            st.warning("Debes estimar un modelo primero para simulación, diagnóstico e informe.")
+            if st.button("Estimar modelo automáticamente desde Deliberación"):
+                df = st.session_state.df
+                model_name = "Logit"
+                import statsmodels.api as sm
+                X = sm.add_constant(df[FEATURES], has_constant="add")
+                y = df["Y"]
+                from statsmodels.discrete.discrete_model import Logit
+                model = Logit(y, X).fit(disp=False)
+                st.session_state.model = model
+                st.success(f"Modelo {model_name} estimado automáticamente.")
+                st.experimental_rerun()
+                return
+            st.stop()
         else:
             if st.session_state.root_prompt is None:
                 prompt = st.text_input("Describe el análisis que quieres realizar:")
@@ -256,7 +271,7 @@ def main():
         FEATURES = st.session_state.FEATURES
         model = st.session_state.model
         if model is None:
-            st.warning("Debes estimar un modelo primero en la pestaña Econometría.")
+            st.warning("Debes estimar un modelo primero en la pestaña Econometría o Deliberación.")
             st.stop()
         diagnostics = check_model_diagnostics(st.session_state.df, model, FEATURES)
         st.json(diagnostics)
@@ -268,7 +283,7 @@ def main():
         FEATURES = st.session_state.FEATURES
         model = st.session_state.model
         if model is None:
-            st.warning("Debes estimar un modelo primero en la pestaña Econometría.")
+            st.warning("Debes estimar un modelo primero en la pestaña Econometría o Deliberación.")
             st.stop()
         if st.button("Generar informe"):
             diagnostics = check_model_diagnostics(st.session_state.df, model, FEATURES)

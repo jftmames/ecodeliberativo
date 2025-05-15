@@ -58,7 +58,7 @@ def main():
         st.session_state.df = pd.read_csv(uploaded)
         reset_session_state()
         st.success("Nuevo archivo cargado. Por favor, selecciona variables explicativas y estima un modelo.")
-        st.experimental_rerun()
+        st.rerun()
         return  # Detiene ejecución, no habrá más errores
 
     tabs = st.tabs([
@@ -102,7 +102,7 @@ def main():
                     st.success(f"Modelo {model_name} estimado correctamente.")
                     st.write("Resumen del modelo:")
                     st.text(st.session_state.model.summary())
-                st.experimental_rerun()
+                st.rerun()
                 return
 
             if st.session_state.model is not None:
@@ -178,7 +178,7 @@ def main():
                 from statsmodels.discrete.discrete_model import Logit
                 st.session_state.model = Logit(y, X).fit(disp=False)
                 st.success(f"Modelo {model_name} estimado automáticamente.")
-                st.experimental_rerun()
+                st.rerun()
                 return
             st.stop()
         else:
@@ -221,7 +221,7 @@ def main():
                     st.session_state.root_prompt = None
                     st.session_state.subqs = []
                     st.session_state.manual_subq_key = 0
-                    st.experimental_rerun()
+                    st.rerun()
                     return
 
                 if steps:

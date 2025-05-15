@@ -1,11 +1,17 @@
-# econometrics.py
+"""
+econometrics.py
+
+Modelos econométricos para análisis del comportamiento del consumidor.
+Implementa OLS, Logit, Probit, MNL y Poisson usando statsmodels.
+Fácilmente ampliable a Tobit y Nested Logit si se requiere en el futuro.
+
+Autor: [Tu nombre o equipo]
+"""
 
 import numpy as np
 import pandas as pd
 import statsmodels.api as sm
 from statsmodels.discrete.discrete_model import Logit, Probit, MNLogit, Poisson
-
-# Modelos econométricos para el análisis del comportamiento del consumidor
 
 def estimate_ols(X, y):
     """
@@ -58,7 +64,7 @@ def estimate_model(model_name, X, y, **kwargs):
     model_name: str, nombre del modelo ("OLS", "Logit", "Probit", "MNL", "Poisson")
     X: DataFrame de variables explicativas
     y: Serie/array objetivo
-    kwargs: argumentos extra (por compatibilidad futura)
+    kwargs: argumentos extra (compatibilidad futura)
     """
     if model_name == "OLS":
         return estimate_ols(X, y)
@@ -72,3 +78,11 @@ def estimate_model(model_name, X, y, **kwargs):
         return estimate_poisson(X, y)
     else:
         raise ValueError(f"Modelo no soportado: {model_name}")
+
+# Para ampliar:
+# def estimate_tobit(X, y, left=0, right=np.inf):
+#     # Implementación pendiente, requiere linearmodels (no cloud por defecto)
+#     pass
+# def estimate_nested_logit(X, y, ...):
+#     # Implementación pendiente, requiere pylogit (no cloud por defecto)
+#     pass

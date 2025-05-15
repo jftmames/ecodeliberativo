@@ -56,13 +56,13 @@ def main():
 
     params_dict = {modelo: {} for modelo in modelos_seleccionados}
 
-    resultados_modelos = {}
-    eees = {}
-    aics = {}
-    bics = {}
-    summaries = {}
-
     if st.sidebar.button("Ejecutar modelos seleccionados"):
+        resultados_modelos = {}
+        aics = {}
+        bics = {}
+        summaries = {}
+        # Borra respuestas almacenadas al ejecutar modelos nuevos
+        st.session_state["deliberation_answers"] = {}
         for modelo in modelos_seleccionados:
             try:
                 res = run_model(df, modelo, y_var, x_vars, **params_dict.get(modelo, {}))
@@ -70,10 +70,21 @@ def main():
                 aics[modelo] = res["diagnostics"].get("AIC", None)
                 bics[modelo] = res["diagnostics"].get("BIC", None)
                 summaries[modelo] = res["summary"]
+                # Guardamos resultados para acceso global
+                st.session_state["resultados_modelos"] = resultados_modelos
+                st.session_state["aics"] = aics
+                st.session_state["bics"] = bics
+                st.session_state["summaries"] = summaries
             except Exception as e:
                 st.error(f"Error en modelo {modelo}: {e}")
+    else:
+        # Recuperar resultados previos si existen
+        resultados_modelos = st.session_state.get("resultados_modelos", {})
+        aics = st.session_state.get("aics", {})
+        bics = st.session_state.get("bics", {})
+        summaries = st.session_state.get("summaries", {})
 
-    # Determinar modelo principal válido para uso en tabs
+    # Elegir modelo principal válido
     modelo_ref = None
     if resultados_modelos:
         for m in modelos_seleccionados:
@@ -247,6 +258,11 @@ def main():
 
             st.markdown("---")
             st.subheader("Informe deliberativo")
+            # Verifica que existan respuestas y feedback para enviar
+            respuestas_usuario = st.session_state.get("deliberation_answers", {})
+            feedback_user = st.session_state.get("feedback_user", "")
+            eee = calcular_eee(respuestas_usuario) if respuestas_usuario else None
+
             if st.button("Generar informe HTML", key="gen_html"):
                 informe_html = generar_informe_html(
                     modo=modo,
@@ -256,10 +272,10 @@ def main():
                     resumen=res["summary"],
                     coef=res["coef"],
                     diagnostico=res["diagnostics"],
-                    deliberacion=list(respuestas_usuario.items()) if "respuestas_usuario" in locals() else [],
-                    eee=eees.get(modelo_ref, None),
-                    eee_texto=perfil_eee(eees.get(modelo_ref, 0)),
-                    feedback=feedback_user if "feedback_user" in locals() else ""
+                    deliberacion=list(respuestas_usuario.items()) if respuestas_usuario else [],
+                    eee=eee,
+                    eee_texto=perfil_eee(eee) if eee else "",
+                    feedback=feedback_user
                 )
                 st.components.v1.html(informe_html, height=800, scrolling=True)
                 st.download_button(

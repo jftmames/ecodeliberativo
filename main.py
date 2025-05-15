@@ -1,15 +1,14 @@
 import streamlit as st
 import pandas as pd
-import numpy as np
 from econometrics import run_model
 from deliberation_engine import preguntar_deliberativo
 from report_generator import generar_informe_html
 from epistemic_metrics import calcular_eee, perfil_eee
 
-import plotly.express as px
-import plotly.graph_objects as go
 import networkx as nx
 import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
 
 st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
 
@@ -18,7 +17,6 @@ def main():
 
     modo = st.sidebar.selectbox("Modo de uso", ["Docente", "Consultor", "Institucional"])
 
-    # --- CARGA DE DATOS ---
     st.sidebar.header("Datos de análisis")
     data_source = st.sidebar.radio("¿Cómo quieres cargar los datos?", ["Ejemplo", "Subir CSV"])
     if data_source == "Ejemplo":
@@ -34,7 +32,6 @@ def main():
     st.write("Vista previa de los datos:")
     st.dataframe(df.head(10))
 
-    # --- SELECCIÓN DE VARIABLES ---
     st.sidebar.header("Variables")
     y_var = st.sidebar.selectbox("Variable dependiente", df.columns)
     x_vars = st.sidebar.multiselect("Variables independientes", [col for col in df.columns if col != y_var])
@@ -43,10 +40,10 @@ def main():
         st.info("Selecciona al menos una variable independiente para continuar.")
         st.stop()
 
-    # --- SELECCIÓN Y COMPARATIVA DE MODELOS ---
-    st.sidebar.header("Modelos a analizar")
     modelos_disponibles = ["Logit", "Probit", "Tobit", "MNL", "OLS", "Poisson"]
+    st.sidebar.header("Modelos a analizar")
     modelos_seleccionados = st.sidebar.multiselect("Selecciona uno o varios modelos", modelos_disponibles, default=["Logit"])
+
     params_dict = {}
     for modelo in modelos_seleccionados:
         if modelo == "Tobit":
@@ -57,34 +54,30 @@ def main():
         else:
             params_dict[modelo] = {}
 
-    # --- EJECUCIÓN DE MODELOS SELECCIONADOS ---
     resultados_modelos = {}
     eees = {}
     aics = {}
     bics = {}
     summaries = {}
+
     if st.sidebar.button("Ejecutar modelos seleccionados"):
         for modelo in modelos_seleccionados:
             try:
                 res = run_model(df, modelo, y_var, x_vars, **params_dict.get(modelo, {}))
                 resultados_modelos[modelo] = res
-                # EEE se calcula con deliberación real después, aquí solo inicializamos
                 aics[modelo] = res["diagnostics"].get("AIC", None)
                 bics[modelo] = res["diagnostics"].get("BIC", None)
                 summaries[modelo] = res["summary"]
             except Exception as e:
                 st.error(f"Error en modelo {modelo}: {e}")
 
-    # --- TABS PARA DASHBOARD MULTI-PÁGINA ---
     tab1, tab2, tab3, tab4 = st.tabs(["Análisis", "Deliberación", "Simulación", "Resultados e Informe"])
 
-    # --- TAB 1: ANÁLISIS ---
     with tab1:
         st.header("1️⃣ Dashboard de Análisis y Visualización")
         if resultados_modelos:
-            modelo_ref = modelos_seleccionados[0]  # El principal para visualización por defecto
+            modelo_ref = modelos_seleccionados[0]
             res = resultados_modelos[modelo_ref]
-            # Métricas rápidas
             col1, col2, col3 = st.columns(3)
             with col1:
                 st.metric("Nº observaciones", len(df))
@@ -93,20 +86,17 @@ def main():
             with col3:
                 st.metric("Modelo principal", modelo_ref)
 
-            # Gráfico de coeficientes
             if hasattr(res["coef"], "index"):
                 coef_df = res["coef"].to_frame("Coeficiente").reset_index().rename(columns={"index": "Variable"})
                 fig_coef = px.bar(coef_df, x="Variable", y="Coeficiente", title="Coeficientes del modelo", text_auto=True)
                 st.plotly_chart(fig_coef, use_container_width=True)
 
-            # Gráfico de predicciones
             if "predicted" in res:
                 pred = res["predicted"]
                 st.markdown("#### Distribución de predicciones")
                 fig_pred = px.histogram(pred, nbins=20, title="Distribución de predicciones")
                 st.plotly_chart(fig_pred, use_container_width=True)
 
-            # Gráfico de elasticidades (si existen)
             if "elasticities" in res:
                 st.markdown("#### Elasticidades")
                 elas = res["elasticities"]
@@ -115,7 +105,6 @@ def main():
                     fig_elas = px.bar(elas_df, x="Variable", y="Elasticidad", title="Elasticidades")
                     st.plotly_chart(fig_elas, use_container_width=True)
 
-            # Comparativa de modelos: AIC/BIC
             if len(resultados_modelos) > 1:
                 st.markdown("#### Comparativa de modelos (AIC/BIC)")
                 comp_df = pd.DataFrame({
@@ -132,7 +121,6 @@ def main():
         else:
             st.info("Ejecuta primero los modelos para ver análisis.")
 
-    # --- TAB 2: DELIBERACIÓN ---
     with tab2:
         st.header("2️⃣ Deliberación estructurada y feedback")
         if resultados_modelos:
@@ -146,7 +134,6 @@ def main():
             for i, (preg, resp) in enumerate(respuestas_usuario.items(), 1):
                 st.markdown(f"**{i}. {preg}**<br>{resp}", unsafe_allow_html=True)
 
-            # Visualización árbol epistémico
             st.subheader("Árbol epistémico (trazabilidad del razonamiento)")
             try:
                 G = nx.DiGraph()
@@ -167,20 +154,16 @@ def main():
             except Exception as ex:
                 st.info("No se pudo dibujar el árbol epistémico. Error: " + str(ex))
 
-            # Cálculo del EEE
             eee = calcular_eee(respuestas_usuario)
             st.subheader("Índice de Equilibrio Erotético (EEE)")
             st.metric("EEE", eee)
             st.caption(perfil_eee(eee))
-            eees[modelo_ref] = eee
 
-            # Feedback automático sobre interpretación
             st.markdown("### 🗣️ ¿Qué interpretación sugieres a partir de este resultado?")
             feedback_user = st.text_area("Tu interpretación/reflexión:", key="feedback_user")
             if st.button("Guardar interpretación", key="btn_feedback"):
                 st.success("¡Interpretación guardada! Se añadirá al informe final.")
 
-            # Descarga de respuestas deliberativas
             delib_df = pd.DataFrame(list(respuestas_usuario.items()), columns=["Pregunta", "Respuesta"])
             st.download_button(
                 label="Descargar respuestas deliberativas (CSV)",
@@ -191,7 +174,6 @@ def main():
         else:
             st.info("Ejecuta primero un modelo y responde a las preguntas para deliberar.")
 
-    # --- TAB 3: SIMULACIÓN CONTRAFACTUAL ---
     with tab3:
         st.header("3️⃣ Simulación contrafactual")
         if resultados_modelos:
@@ -207,7 +189,6 @@ def main():
                 mean_v = float(df[var].mean())
                 contrafactual[var] = st.slider(f"{var}", min_value=min_v, max_value=max_v, value=mean_v)
 
-            # DataFrame para predicción
             row = pd.DataFrame([contrafactual])
             if "const" in res["coef"].index:
                 row.insert(0, "const", 1.0)
@@ -215,8 +196,7 @@ def main():
                 if "result" in res:
                     pred_cf = res["result"].predict(row)[0]
                     st.success(f"Predicción contrafactual: {pred_cf:.4f}")
-                    # Gráfico comparativo original vs contrafactual
-                    st.markdown("#### Comparativa: Predicción original vs. contrafactual")
+
                     original_pred = res["result"].predict(res["result"].model.exog)[0]
                     fig_cf = go.Figure(data=[
                         go.Bar(name='Original', x=['Predicción'], y=[original_pred]),
@@ -229,7 +209,6 @@ def main():
         else:
             st.info("Ejecuta primero un modelo para simular escenarios contrafactuales.")
 
-    # --- TAB 4: RESULTADOS E INFORME FINAL ---
     with tab4:
         st.header("4️⃣ Resultados completos, diagnósticos y exportación de informe")
         if resultados_modelos:
@@ -244,7 +223,6 @@ def main():
             st.subheader("Diagnóstico automático")
             st.json(res["diagnostics"])
 
-            # Descarga de coeficientes y diagnóstico
             st.download_button(
                 label="Descargar coeficientes como CSV",
                 data=res["coef"].to_csv().encode("utf-8"),
@@ -259,11 +237,9 @@ def main():
                 mime="text/csv"
             )
 
-            # Informe HTML
             st.markdown("---")
             st.subheader("Informe deliberativo")
             if st.button("Generar informe HTML", key="gen_html"):
-                # Recupera deliberación y feedback de tab2 si quieres integrarlo aquí
                 informe_html = generar_informe_html(
                     modo=modo,
                     modelo=modelo_ref,

@@ -7,3 +7,4 @@ matplotlib
 plotly
 networkx
 jinja2
+graphviz

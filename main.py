@@ -12,10 +12,40 @@ import plotly.graph_objects as go
 
 st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
 
+def mostrar_tips_perfil(modo):
+    if modo == "Docente":
+        st.sidebar.markdown(
+            """
+            ### Tips para modo Docente
+            - Explique a sus estudiantes la importancia de cada variable en el modelo.
+            - Use las preguntas deliberativas para fomentar el pensamiento crítico.
+            - Aproveche las simulaciones para mostrar escenarios contrafactuales.
+            """
+        )
+    elif modo == "Consultor":
+        st.sidebar.markdown(
+            """
+            ### Tips para modo Consultor
+            - Analice los coeficientes para identificar variables clave para sus clientes.
+            - Use los diagnósticos para validar la calidad del modelo.
+            - Prepare informes descargables para sus presentaciones.
+            """
+        )
+    elif modo == "Institucional":
+        st.sidebar.markdown(
+            """
+            ### Tips para modo Institucional
+            - Enfóquese en la interpretación estratégica de las elasticidades.
+            - Use los índices EEE para evaluar la calidad de la toma de decisiones.
+            - Realice comparativas de modelos para elegir la mejor política.
+            """
+        )
+
 def main():
     st.title("Simulador Econométrico-Deliberativo")
 
     modo = st.sidebar.selectbox("Modo de uso", ["Docente", "Consultor", "Institucional"])
+    mostrar_tips_perfil(modo)
 
     st.sidebar.header("Datos de análisis")
     data_source = st.sidebar.radio("¿Cómo quieres cargar los datos?", ["Ejemplo", "Subir CSV"])
@@ -61,7 +91,7 @@ def main():
         aics = {}
         bics = {}
         summaries = {}
-        st.session_state["deliberation_answers"] = {}  # limpiar respuestas al nuevo análisis
+        st.session_state["deliberation_answers"] = {}
         for modelo in modelos_seleccionados:
             try:
                 res = run_model(df, modelo, y_var, x_vars, **params_dict.get(modelo, {}))

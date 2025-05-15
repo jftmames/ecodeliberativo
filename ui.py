@@ -59,7 +59,7 @@ def main():
         reset_session_state()
         st.success("Nuevo archivo cargado. Por favor, selecciona variables explicativas y estima un modelo.")
         st.rerun()
-        return  # Detiene ejecución, no habrá más errores
+        return
 
     tabs = st.tabs([
         "1. Datos", "2. Econometría", "3. Deliberación", "4. Diagnóstico", "5. Informe"
@@ -86,9 +86,15 @@ def main():
         if not FEATURES:
             st.warning("Selecciona variables explicativas en la pestaña de datos.")
         else:
+            # Solo permitir MNL si Y tiene al menos 3 valores únicos
+            y_unique = st.session_state.df['Y'].nunique()
+            allowed_models = ["OLS", "Logit", "Probit", "Poisson"]
+            if y_unique >= 3:
+                allowed_models.append("MNL")
+
             model_name = st.selectbox(
                 "Selecciona el modelo econométrico",
-                ["OLS", "Logit", "Probit", "MNL", "Poisson"],
+                allowed_models,
                 key="modelo_econometrico"
             )
             X = df[FEATURES]

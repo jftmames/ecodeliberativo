@@ -1,42 +1,74 @@
 # econometrics.py
-import statsmodels.api as sm
+
+import numpy as np
 import pandas as pd
+import statsmodels.api as sm
+from statsmodels.discrete.discrete_model import Logit, Probit, MNLogit, Poisson
 
-def add_constant(df: pd.DataFrame, cols: list) -> pd.DataFrame:
-    """
-    Añade la constante al diseño X para regresión.
-    """
-    X = df[cols].copy()
-    return sm.add_constant(X)
+# Modelos econométricos para el análisis del comportamiento del consumidor
 
-def fit_logit(df: pd.DataFrame, features: list, target: str):
+def estimate_ols(X, y):
     """
-    Ajusta un modelo Logit y devuelve el objeto resultante.
+    Estima un modelo de regresión OLS.
     """
-    X = add_constant(df, features)
-    y = df[target]
-    model = sm.Logit(y, X).fit(disp=False)
-    return model
+    X_ = sm.add_constant(X)
+    model = sm.OLS(y, X_)
+    results = model.fit()
+    return results
 
-def fit_ols(df: pd.DataFrame, features: list, target: str):
+def estimate_logit(X, y):
     """
-    Ajusta un modelo OLS y devuelve el objeto resultante.
+    Estima un modelo Logit binario.
     """
-    X = add_constant(df, features)
-    y = df[target]
-    model = sm.OLS(y, X).fit()
-    return model
+    X_ = sm.add_constant(X)
+    model = Logit(y, X_)
+    results = model.fit()
+    return results
 
-def summarize_model(model) -> str:
+def estimate_probit(X, y):
     """
-    Devuelve el summary() del modelo como texto.
+    Estima un modelo Probit binario.
     """
-    return model.summary().as_text()
+    X_ = sm.add_constant(X)
+    model = Probit(y, X_)
+    results = model.fit()
+    return results
 
-def compute_average_probability(model, df: pd.DataFrame, features: list) -> float:
+def estimate_mnl(X, y):
     """
-    Para Logit, calcula la probabilidad media de elección.
+    Estima un modelo Logit Multinomial (MNL).
     """
-    X = add_constant(df, features)
-    probs = model.predict(X)
-    return float(probs.mean())
+    X_ = sm.add_constant(X)
+    model = MNLogit(y, X_)
+    results = model.fit()
+    return results
+
+def estimate_poisson(X, y):
+    """
+    Estima un modelo de regresión Poisson (conteo).
+    """
+    X_ = sm.add_constant(X)
+    model = Poisson(y, X_)
+    results = model.fit()
+    return results
+
+def estimate_model(model_name, X, y, **kwargs):
+    """
+    Selecciona y estima el modelo especificado.
+    model_name: str, nombre del modelo ("OLS", "Logit", "Probit", "MNL", "Poisson")
+    X: DataFrame de variables explicativas
+    y: Serie/array objetivo
+    kwargs: argumentos extra (por compatibilidad futura)
+    """
+    if model_name == "OLS":
+        return estimate_ols(X, y)
+    elif model_name == "Logit":
+        return estimate_logit(X, y)
+    elif model_name == "Probit":
+        return estimate_probit(X, y)
+    elif model_name == "MNL":
+        return estimate_mnl(X, y)
+    elif model_name == "Poisson":
+        return estimate_poisson(X, y)
+    else:
+        raise ValueError(f"Modelo no soportado: {model_name}")

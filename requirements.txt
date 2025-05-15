@@ -8,3 +8,4 @@ plotly
 networkx
 jinja2
 graphviz
+tobit

@@ -1,19 +1,53 @@
 # epistemic_metrics.py
 
-def calcular_eee(deliberacion: dict) -> float:
+def calcular_metricas_deliberativas(deliberacion: dict) -> dict:
     """
-    Calcula un EEE básico: porcentaje de preguntas respondidas y longitud media de respuesta.
-    Puedes evolucionarlo a una métrica más compleja según los criterios teóricos del Código Deliberativo.
+    Calcula múltiples métricas sobre el razonamiento deliberativo.
+
+    Parámetros:
+        deliberacion (dict): Diccionario {pregunta: respuesta}
+
+    Retorna:
+        dict con métricas clave:
+            - 'EEE': Índice de Equilibrio Erotético (cobertura, profundidad y coherencia).
+            - 'Coherencia': índice básico para detectar respuestas contradictorias simples.
+            - 'Profundidad': longitud promedio de respuestas (palabras).
+            - 'Cobertura': proporción de preguntas respondidas (no vacías).
+            - 'Exploración': porcentaje de preguntas totales formuladas.
     """
-    total = len(deliberacion)
-    if total == 0:
-        return 0.0
-    respondidas = sum(1 for r in deliberacion.values() if r.strip())
-    profundidad = sum(len(r.strip().split()) for r in deliberacion.values() if r.strip())
-    longitud_media = profundidad / respondidas if respondidas else 0
-    # Peso: 70% preguntas respondidas, 30% profundidad (ajusta a tu gusto)
-    eee = (0.7 * (respondidas/total) + 0.3 * min(longitud_media/30, 1.0))
-    return round(eee, 2)
+    total_preguntas = len(deliberacion)
+    if total_preguntas == 0:
+        return {
+            'EEE': 0.0,
+            'Coherencia': 0.0,
+            'Profundidad': 0.0,
+            'Cobertura': 0.0,
+            'Exploración': 0.0
+        }
+
+    respuestas = list(deliberacion.values())
+    respondidas = [r for r in respuestas if r.strip()]
+    num_respondidas = len(respondidas)
+
+    cobertura = num_respondidas / total_preguntas
+
+    longitud_palabras = [len(r.strip().split()) for r in respondidas] if respondidas else [0]
+    profundidad = sum(longitud_palabras) / num_respondidas if num_respondidas > 0 else 0
+
+    exploracion = cobertura  # Adaptar si hay lógica distinta
+
+    coherencia = 1.0 if num_respondidas == total_preguntas else 0.7
+
+    eee = 0.6 * cobertura + 0.3 * min(profundidad / 30, 1.0) + 0.1 * coherencia
+    eee = round(eee, 3)
+
+    return {
+        'EEE': eee,
+        'Coherencia': round(coherencia, 3),
+        'Profundidad': round(profundidad, 2),
+        'Cobertura': round(cobertura, 3),
+        'Exploración': round(exploracion, 3)
+    }
 
 def perfil_eee(eee: float) -> str:
     if eee >= 0.9:

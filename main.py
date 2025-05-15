@@ -3,6 +3,10 @@ import pandas as pd
 from econometrics import run_model
 from deliberation_engine import preguntar_deliberativo
 from report_generator import generar_informe_html
+from epistemic_metrics import calcular_eee, perfil_eee
+
+import networkx as nx
+import matplotlib.pyplot as plt
 
 def main():
     st.title("Simulador Econométrico-Deliberativo")
@@ -67,6 +71,33 @@ def main():
             for i, (preg, resp) in enumerate(respuestas_usuario.items(), 1):
                 st.markdown(f"**{i}. {preg}**<br>{resp}", unsafe_allow_html=True)
 
+            # --- Visualización de árbol epistémico ---
+            st.subheader("Árbol epistémico (trazabilidad del razonamiento)")
+            try:
+                G = nx.DiGraph()
+                root = "Pregunta raíz"
+                G.add_node(root)
+                for i, (preg, resp) in enumerate(respuestas_usuario.items(), 1):
+                    nodo_p = f"Q{i}: {preg}"
+                    G.add_node(nodo_p)
+                    G.add_edge(root, nodo_p)
+                    if resp.strip():
+                        nodo_r = f"R{i}: {resp[:30]}..." if len(resp) > 30 else f"R{i}: {resp}"
+                        G.add_node(nodo_r)
+                        G.add_edge(nodo_p, nodo_r)
+                fig, ax = plt.subplots(figsize=(8, 2 + len(respuestas_usuario)//2))
+                pos = nx.spring_layout(G, seed=42)
+                nx.draw(G, pos, with_labels=True, node_color="#c6dbef", font_size=8, ax=ax)
+                st.pyplot(fig)
+            except Exception as ex:
+                st.info("No se pudo dibujar el árbol epistémico. Error: " + str(ex))
+
+            # --- Cálculo y visualización del Índice de Equilibrio Erotético (EEE) ---
+            eee = calcular_eee(respuestas_usuario)
+            st.subheader("Índice de Equilibrio Erotético (EEE)")
+            st.metric("EEE", eee)
+            st.caption(perfil_eee(eee))
+
             # Descarga de respuestas deliberativas
             delib_df = pd.DataFrame(list(respuestas_usuario.items()), columns=["Pregunta", "Respuesta"])
             st.download_button(
@@ -107,7 +138,9 @@ def main():
                     resumen=result_dict["summary"],
                     coef=result_dict["coef"],
                     diagnostico=result_dict["diagnostics"],
-                    deliberacion=list(respuestas_usuario.items())
+                    deliberacion=list(respuestas_usuario.items()),
+                    eee=eee,
+                    eee_texto=perfil_eee(eee)
                 )
                 st.components.v1.html(informe_html, height=800, scrolling=True)
                 st.download_button(

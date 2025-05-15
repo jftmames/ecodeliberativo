@@ -49,6 +49,7 @@ def calcular_metricas_deliberativas(deliberacion: dict) -> dict:
         'Exploración': round(exploracion, 3)
     }
 
+
 def perfil_eee(eee: float) -> str:
     if eee >= 0.9:
         return "Juicio deliberativo óptimo"

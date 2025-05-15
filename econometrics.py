@@ -6,8 +6,9 @@ from statsmodels.regression.linear_model import OLS
 from sklearn.preprocessing import LabelEncoder
 from typing import Dict, Any
 
-# Importar Tobit del paquete externo
-from tobit import TobitModel
+# Tobit deshabilitado por incompatibilidad con Python 3.12
+def fit_tobit(df, y_var, x_vars, **kwargs):
+    raise NotImplementedError("El modelo Tobit está temporalmente deshabilitado por incompatibilidad con la versión actual de Python.")
 
 def prepare_X_y(df, y_var, x_vars):
     X = df[x_vars]
@@ -53,34 +54,6 @@ def fit_probit(df: pd.DataFrame, y_var: str, x_vars: list) -> Dict[str, Any]:
         "questions": questions,
         "diagnostics": diagnostics,
         "predicted": result.predict(X)
-    }
-
-def fit_tobit(df: pd.DataFrame, y_var: str, x_vars: list, left=0, right=None) -> Dict[str, Any]:
-    X = df[x_vars].values
-    y = df[y_var].values
-    model = TobitModel(y, X, left=left, right=right)
-    res = model.fit(method="bfgs")
-    coef = pd.Series(res.params, index=["const"] + x_vars if "const" not in x_vars else x_vars)
-    summary = f"Tobit Model fitted with {len(y)} observations."
-    questions = [
-        "¿Por qué usar Tobit para datos censurados?",
-        "¿Cómo interpretar los coeficientes en presencia de censura?",
-        "¿Se cumplen las hipótesis del modelo Tobit?"
-    ]
-    diagnostics = {
-        "log_likelihood": res.llf,
-        "AIC": getattr(res, "aic", None),
-        "BIC": getattr(res, "bic", None),
-    }
-    predicted = model.predict(X)
-    return {
-        "modelo": "Tobit",
-        "result": res,
-        "summary": summary,
-        "coef": coef,
-        "questions": questions,
-        "diagnostics": diagnostics,
-        "predicted": predicted,
     }
 
 def fit_mnl(df: pd.DataFrame, y_var: str, x_vars: list) -> Dict[str, Any]:

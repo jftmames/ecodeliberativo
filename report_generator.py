@@ -1,5 +1,3 @@
-# report_generator.py
-
 from jinja2 import Template
 import datetime
 
@@ -75,11 +73,20 @@ HTML_TEMPLATE = """
             {% endfor %}
         </table>
     </div>
+    <div class="section">
+        <h2>Índice de Equilibrio Erotético (EEE)</h2>
+        <b>Valor EEE:</b> {{ eee if eee is not none else "No calculado" }} <br>
+        <b>Perfil:</b> {{ eee_texto if eee_texto else "No disponible" }}
+    </div>
+    <div class="section">
+        <h2>Interpretación del usuario</h2>
+        <p>{{ feedback if feedback else "No se proporcionó interpretación." }}</p>
+    </div>
 </body>
 </html>
 """
 
-def generar_informe_html(modo, modelo, y_var, x_vars, resumen, coef, diagnostico, deliberacion):
+def generar_informe_html(modo, modelo, y_var, x_vars, resumen, coef, diagnostico, deliberacion, eee=None, eee_texto="", feedback=""):
     fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
     template = Template(HTML_TEMPLATE)
     html = template.render(
@@ -91,6 +98,9 @@ def generar_informe_html(modo, modelo, y_var, x_vars, resumen, coef, diagnostico
         resumen=resumen,
         coef=coef.to_dict() if hasattr(coef, "to_dict") else dict(coef),
         diagnostico=diagnostico,
-        deliberacion=deliberacion
+        deliberacion=deliberacion,
+        eee=eee,
+        eee_texto=eee_texto,
+        feedback=feedback
     )
     return html

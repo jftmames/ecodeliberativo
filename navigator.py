@@ -46,4 +46,6 @@ class EpistemicNavigator:
     @classmethod
     def clear_tracker(cls):
         """
-        Limpia
+        Limpia el historial de pasos deliberativos.
+        """
+        cls._tracker = {"steps": []}

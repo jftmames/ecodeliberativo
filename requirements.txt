@@ -5,4 +5,5 @@ statsmodels
 matplotlib
 openai>=1.11.0
 graphviz
-
+linearmodels
+pylogit

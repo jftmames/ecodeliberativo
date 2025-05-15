@@ -4,11 +4,10 @@ from econometrics import run_model
 from deliberation_engine import preguntar_deliberativo
 from report_generator import generar_informe_html
 from epistemic_metrics import calcular_metricas_deliberativas, perfil_eee
+from visualizations import graficar_elasticidades, graficar_simulacion_contrafactual
 
 import networkx as nx
 import matplotlib.pyplot as plt
-import plotly.express as px
-import plotly.graph_objects as go
 
 st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
 
@@ -136,22 +135,15 @@ def main():
 
             if hasattr(res["coef"], "index"):
                 coef_df = res["coef"].to_frame("Coeficiente").reset_index().rename(columns={"index": "Variable"})
-                fig_coef = px.bar(coef_df, x="Variable", y="Coeficiente", title="Coeficientes del modelo", text_auto=True)
-                st.plotly_chart(fig_coef, use_container_width=True)
+                fig_coef = graficar_elasticidades(res.get("elasticities", {}))
+                if fig_coef:
+                    st.plotly_chart(fig_coef, use_container_width=True)
 
             if "predicted" in res:
                 pred = res["predicted"]
                 st.markdown("#### Distribución de predicciones")
                 fig_pred = px.histogram(pred, nbins=20, title="Distribución de predicciones")
                 st.plotly_chart(fig_pred, use_container_width=True)
-
-            if "elasticities" in res:
-                st.markdown("#### Elasticidades")
-                elas = res["elasticities"]
-                if isinstance(elas, dict):
-                    elas_df = pd.DataFrame(list(elas.items()), columns=["Variable", "Elasticidad"])
-                    fig_elas = px.bar(elas_df, x="Variable", y="Elasticidad", title="Elasticidades")
-                    st.plotly_chart(fig_elas, use_container_width=True)
 
             if len(resultados_modelos) > 1:
                 st.markdown("#### Comparativa de modelos (AIC/BIC)")
@@ -248,11 +240,7 @@ def main():
                     st.success(f"Predicción contrafactual: {pred_cf:.4f}")
 
                     original_pred = res["result"].predict(res["result"].model.exog)[0]
-                    fig_cf = go.Figure(data=[
-                        go.Bar(name='Original', x=['Predicción'], y=[original_pred]),
-                        go.Bar(name='Contrafactual', x=['Predicción'], y=[pred_cf])
-                    ])
-                    fig_cf.update_layout(barmode='group')
+                    fig_cf = graficar_simulacion_contrafactual(original_pred, pred_cf)
                     st.plotly_chart(fig_cf, use_container_width=True)
             except Exception as e:
                 st.warning(f"No se pudo calcular la predicción contrafactual: {e}")

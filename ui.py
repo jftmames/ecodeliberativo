@@ -35,7 +35,7 @@ def reset_session_state():
     EpistemicNavigator.clear_tracker()
 
 def main():
-    # --- Inicialización del estado ---
+    # --- Inicialización robusta del estado ---
     for var, default in [
         ("model", None),
         ("FEATURES", []),
@@ -52,6 +52,15 @@ def main():
     st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
     st.title("Simulador Econométrico-Deliberativo para Decisiones de Consumo")
 
+    # --- CONTROL de subida de archivo y reset total ---
+    uploaded = st.file_uploader("Sube un CSV con tus datos (incluye Y)", type="csv")
+    if uploaded:
+        st.session_state.df = pd.read_csv(uploaded)
+        reset_session_state()
+        st.success("Nuevo archivo cargado. Por favor, selecciona variables explicativas y estima un modelo.")
+        st.experimental_rerun()
+        return  # Detiene ejecución, no habrá más errores
+
     tabs = st.tabs([
         "1. Datos", "2. Econometría", "3. Deliberación", "4. Diagnóstico", "5. Informe"
     ])
@@ -59,13 +68,6 @@ def main():
     # --- 1. Datos ---
     with tabs[0]:
         st.header("1. Datos")
-        uploaded = st.file_uploader("Sube un CSV con tus datos (incluye Y)", type="csv")
-        if uploaded:
-            st.session_state.df = pd.read_csv(uploaded)
-            reset_session_state()
-            st.success("Nuevo archivo cargado. Por favor, selecciona variables explicativas y estima un modelo.")
-            st.experimental_rerun()
-            return
         df = st.session_state.df
         FEATURES = st.multiselect(
             "Selecciona variables explicativas:",
@@ -279,4 +281,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

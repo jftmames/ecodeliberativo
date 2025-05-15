@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import numpy as np  # Por si lo usas en cálculos o transformaciones
 from econometrics import run_model
 from deliberation_engine import preguntar_deliberativo
 from report_generator import generar_informe_html
@@ -10,6 +11,10 @@ import networkx as nx
 import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
+
+# Opcional (si usas json, datetime u otros en main.py)
+import json
+import datetime
 
 
 st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")

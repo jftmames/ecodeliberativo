@@ -94,7 +94,6 @@ def main():
             "Poisson": "Y es una variable de conteo: ideal para Poisson (por ejemplo, número de compras, incidencias)."
         }[tipo_ejemplo]
 
-    # Explicación para el usuario
     st.info(f"**Ejemplo precargado:** {explicacion}")
 
     # --- CONTROL de subida de archivo y reset total ---
@@ -133,10 +132,13 @@ def main():
         if not FEATURES:
             st.warning("Selecciona variables explicativas en la pestaña de datos.")
         else:
+            # En el bloque del selector de modelo:
             y_unique = st.session_state.df['Y'].nunique()
             allowed_models = ["OLS", "Logit", "Probit", "Poisson"]
             if y_unique >= 3:
                 allowed_models.append("MNL")
+            allowed_models.append("Tobit")
+            allowed_models.append("Nested Logit")
 
             model_name = st.selectbox(
                 "Selecciona el modelo econométrico",

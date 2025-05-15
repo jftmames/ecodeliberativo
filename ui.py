@@ -140,29 +140,66 @@ def main():
         return
 
     # --- 3. Deliberación ---
-    with tabs[2]:
-        st.header("3. Deliberación epistémica")
-        if "engine" not in st.session_state:
-            st.session_state.engine = DeliberationEngine()
+   with tabs[2]:
+    st.header("3. Deliberación epistémica")
+    if "engine" not in st.session_state:
+        st.session_state.engine = DeliberationEngine()
+    if "root_prompt" not in st.session_state:
+        st.session_state.root_prompt = None
+    if "parent_node" not in st.session_state:
+        st.session_state.parent_node = None
+
+    if st.session_state.root_prompt is None:
         prompt = st.text_input("Describe el análisis que quieres realizar:")
         if prompt:
+            st.session_state.root_prompt = prompt
+            EpistemicNavigator.add_step(prompt, parent=None)
             subqs = st.session_state.engine.generate_subquestions(prompt, FEATURES)
-            for i, q in enumerate(subqs, 1):
-                ans = st.text_input(f"{i}. {q}", key=f"ans_{i}")
-                EpistemicNavigator.record(q, ans)
-            if subqs:
-                st.success(f"{len(subqs)} subpreguntas registradas.")
-        tracker = EpistemicNavigator.get_tracker()
-        steps = tracker.get("steps", [])
-        if steps:
-            st.subheader("Métricas Epistémicas (EEE)")
-            metrics = compute_eee(tracker, max_steps=10)
-            eeedf = pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"])
-            eeedf.index.name = "Dimensión"
-            st.table(eeedf)
-        else:
-            st.info("Registra al menos una respuesta para ver las métricas EEE.")
-        st.sidebar.markdown("Paso 3: Deliberación ⚙️")
+            st.session_state.subqs = subqs
+    else:
+        st.success(f"Pregunta raíz: {st.session_state.root_prompt}")
+        subqs = getattr(st.session_state, "subqs", [])
+        for i, q in enumerate(subqs, 1):
+            ans = st.text_input(f"{i}. {q}", key=f"ans_{i}")
+            if ans:
+                EpistemicNavigator.record(q, ans, parent=0)
+        if st.button("Añadir subpregunta manual"):
+            new_subq = st.text_input("Nueva subpregunta:", key="manual_subq")
+            if new_subq:
+                EpistemicNavigator.add_step(new_subq, parent=0)
+        if st.button("Limpiar razonamiento"):
+            EpistemicNavigator.clear_tracker()
+            st.session_state.root_prompt = None
+            st.session_state.subqs = []
+            st.experimental_rerun()
+
+    # Visualización árbol deliberativo
+    tracker = EpistemicNavigator.get_tracker()
+    steps = tracker.get("steps", [])
+    if steps:
+        st.subheader("Árbol deliberativo")
+        try:
+            import graphviz
+            dot = "digraph razonamiento {\n"
+            for idx, step in enumerate(steps):
+                label = step["question"][:30].replace('"', "'")
+                dot += f'{idx} [label="{label}"];\n'
+                if step.get("parent") is not None:
+                    dot += f'{step["parent"]} -> {idx};\n'
+            dot += "}"
+            st.graphviz_chart(dot)
+        except Exception:
+            st.info("Visualización de árbol no disponible (instala graphviz en requirements.txt).")
+        st.subheader("Métricas Epistémicas (EEE)")
+        metrics = compute_eee(tracker, max_steps=10)
+        eeedf = pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"])
+        eeedf.index.name = "Dimensión"
+        st.table(eeedf)
+    else:
+        st.info("Registra al menos una respuesta para ver el árbol y métricas.")
+
+    st.sidebar.markdown("Paso 3: Deliberación ⚙️")
+
 
     # --- 4. Diagnóstico ---
     with tabs[3]:

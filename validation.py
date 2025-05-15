@@ -14,33 +14,25 @@ def check_model_diagnostics(
     target: str = None
 ) -> Dict[str, Any]:
     """
-    Ajusta diagnósticos básicos para un modelo de regresión.
-
-    Parámetros
-    ----------
-    df : pd.DataFrame
-        DataFrame original que contiene las variables features y target.
-    model : objeto
-        Objeto entrenado con método .predict(exog).
-    features : List[str]
-        Lista de nombres de columnas usadas como regresores.
-    target : str, opcional
-        Nombre de la columna objetivo. Si no se especifica, se toma la última columna de df.
+    Diagnósticos para modelo de regresión:
+    - Heterocedasticidad (Breusch–Pagan)
+    - Normalidad de residuos (Jarque–Bera)
+    - Multicolinealidad (VIF)
     """
 
-    # --- 0) Reset de índice y copia ---
+    # Reset de índice y copia
     data = df.reset_index(drop=True).copy()
     n_rows = data.shape[0]
 
-    # --- 1) Inferir target si no se pasa ---
+    # Inferir target si no se pasa
     if target is None:
         target = data.columns[-1]
 
-    # --- 2) Preparar X e y ---
+    # Preparar X e y
     X = data[features]
     y = data[target]
 
-    # --- 3) Reconstruir exógeno (constante + features) ---
+    # Reconstruir exógeno si el modelo tiene exog_names (para statsmodels)
     exog = None
     try:
         exog_names = model.model.exog_names
@@ -53,46 +45,56 @@ def check_model_diagnostics(
     except Exception:
         exog = None
 
-    # --- 4) Obtener predicciones ---
+    # Obtener predicciones usando la matriz apropiada
     base = exog if exog is not None else X
     try:
         preds = model.predict(base)
     except Exception:
         preds = model.predict(base.values)
 
-    # --- 5) Aplanar y corregir mismatch múltiple ---
+    # Aplanar y corregir mismatch múltiple
     preds = np.asarray(preds).flatten()
-    if preds.size != n_rows:
-        if preds.size % n_rows == 0:
-            # “Desapilamos” y tomamos la primera tanda
-            blocks = preds.size // n_rows
-            preds = preds.reshape(blocks, n_rows)[0]
+    if preds.size != data.shape[0]:
+        if preds.size % data.shape[0] == 0:
+            blocks = preds.size // data.shape[0]
+            preds = preds.reshape(blocks, data.shape[0])[0]
         else:
             raise ValueError(
-                f"Predicciones ({preds.size}) no coinciden con filas de datos ({n_rows})."
+                f"Predicciones ({preds.size}) no coinciden con filas de datos ({data.shape[0]})."
             )
 
-    # --- 6) Asignar predicciones y residuos ---
-    data['pred']  = preds
+    # Asignar predicciones y residuos
+    data['pred'] = preds
     data['resid'] = data[target] - data['pred']
 
-    # --- 7) Breusch–Pagan (heterocedasticidad) ---
+    # 1) Heterocedasticidad: Breusch–Pagan
     bp_exog = exog if exog is not None else X
     bp_test = het_breuschpagan(data['resid'], bp_exog)
     bp_pvalue = bp_test[3]
 
-    # --- 8) Jarque–Bera (normalidad) ---
+    # 2) Normalidad de residuos: Jarque–Bera
     _, jb_pvalue = stats.jarque_bera(data['resid'])
 
-    # --- 9) VIF (multicolinealidad) ---
+    # 3) Multicolinealidad: VIF (solo si hay al menos 2 variables)
     vif_dict: Dict[str, float] = {}
-    X_np = X.values
-    for i, feat in enumerate(features):
-        vif_dict[feat] = variance_inflation_factor(X_np, i)
+    if len(features) > 1:
+        X_vif = X.copy()
+        # Elimina la constante si existe
+        for col in ['const', 'intercept']:
+            if col in X_vif.columns:
+                X_vif = X_vif.drop(columns=[col])
+        X_np = X_vif.values
+        for i, feat in enumerate(X_vif.columns):
+            try:
+                vif_dict[feat] = variance_inflation_factor(X_np, i)
+            except Exception:
+                vif_dict[feat] = float('nan')
+    else:
+        vif_dict = {"(no aplica)": float('nan')}
 
     return {
         'bp_pvalue': bp_pvalue,
         'jb_pvalue': jb_pvalue,
-        'vif':       vif_dict,
+        'vif': vif_dict,
         'residuals': data['resid']
     }

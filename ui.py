@@ -144,6 +144,8 @@ def main():
             st.session_state.root_prompt = None
         if "parent_node" not in st.session_state:
             st.session_state.parent_node = None
+        if "manual_subq_val" not in st.session_state:
+            st.session_state.manual_subq_val = ""
 
         if not FEATURES:
             st.warning("Debes seleccionar variables explicativas en la pestaña de datos para deliberar.")
@@ -167,20 +169,41 @@ def main():
                     ans = st.text_input(f"{i}. {q}", key=f"ans_{i}")
                     if ans:
                         EpistemicNavigator.record(q, ans, parent=0)
+
+                st.markdown("**Añadir subpregunta manual:**")
+                # Input separado, con valor gestionado por sesión
+                new_subq = st.text_input(
+                    "Nueva subpregunta",
+                    key="manual_subq_input",
+                    value=st.session_state.manual_subq_val,
+                    placeholder="Introduce una subpregunta y pulsa Añadir",
+                )
+
                 if st.button("Añadir subpregunta manual"):
-                    new_subq = st.text_input("Nueva subpregunta:", key="manual_subq")
-                    if new_subq:
-                        EpistemicNavigator.add_step(new_subq, parent=0)
+                    if new_subq.strip():
+                        EpistemicNavigator.add_step(new_subq.strip(), parent=0)
+                        # Reseteo automático del campo
+                        st.session_state.manual_subq_val = ""
+                        st.session_state["manual_subq_input"] = ""
                         st.experimental_rerun()
                         return
+                    else:
+                        st.warning("La subpregunta no puede estar vacía.")
+
+                # Reseteo automático del input al detectar cambio en sesión
+                if st.session_state.get("manual_subq_input", "") != st.session_state.get("manual_subq_val", ""):
+                    st.session_state.manual_subq_val = st.session_state["manual_subq_input"]
+
                 if st.button("Limpiar razonamiento"):
                     EpistemicNavigator.clear_tracker()
                     st.session_state.root_prompt = None
                     st.session_state.subqs = []
+                    st.session_state.manual_subq_val = ""
+                    st.session_state["manual_subq_input"] = ""
                     st.experimental_rerun()
                     return
 
-                # Visualización árbol deliberativo
+                # Visualización árbol deliberativo y métricas
                 if steps:
                     st.subheader("Árbol deliberativo")
                     try:

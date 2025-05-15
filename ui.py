@@ -11,7 +11,7 @@ from epistemic_metrics import compute_eee
 from validation import check_model_diagnostics
 from report_generator import build_report
 
-def load_example_data():
+def generar_datos_ejemplo(tipo):
     np.random.seed(42)
     n = 200
     df = pd.DataFrame({
@@ -19,11 +19,28 @@ def load_example_data():
         "ingreso": np.random.uniform(20, 100, n),
         "edad": np.random.randint(18, 70, n),
     })
-    X = np.column_stack([np.ones(n), df["precio"], df["ingreso"], df["edad"]])
-    beta = np.array([-1.0, -0.5, 0.03, 0.01])
-    logits = 1 / (1 + np.exp(-X.dot(beta)))
-    df["Y"] = np.random.binomial(1, logits)
-    return df
+    if tipo == "OLS":
+        df["Y"] = 1.5 * df["precio"] + 0.2 * df["ingreso"] + np.random.normal(0, 2, n)
+        explicacion = "Y es una variable continua (ideal para regresión OLS: ejemplo, salario, precio)."
+    elif tipo == "Logit/Probit":
+        logits = 1 / (1 + np.exp(-(-1 + 0.3*df["precio"] - 0.05*df["ingreso"])))
+        df["Y"] = np.random.binomial(1, logits)
+        explicacion = "Y es binaria (0/1): ideal para modelos Logit o Probit (por ejemplo, compra/no compra)."
+    elif tipo == "MNL":
+        logits1 = 1 / (1 + np.exp(-(-1 + 0.2*df["precio"] - 0.05*df["ingreso"])))
+        logits2 = 1 / (1 + np.exp(-(0.5 - 0.1*df["precio"] + 0.07*df["edad"])))
+        probs = np.column_stack([1 - logits1 - logits2, logits1, logits2])
+        probs = np.clip(probs, 0, 1)
+        probs = probs / probs.sum(axis=1, keepdims=True)
+        df["Y"] = [np.random.choice([0, 1, 2], p=p) for p in probs]
+        explicacion = "Y tiene 3 categorías (0, 1, 2): ideal para Logit Multinomial (MNL), por ejemplo, elección entre 3 productos."
+    elif tipo == "Poisson":
+        mu = np.exp(0.5 + 0.1*df["precio"] - 0.02*df["ingreso"])
+        df["Y"] = np.random.poisson(mu)
+        explicacion = "Y es una variable de conteo: ideal para Poisson (por ejemplo, número de compras, incidencias)."
+    else:
+        explicacion = "Tipo no reconocido."
+    return df, explicacion
 
 def reset_session_state():
     st.session_state.model = None
@@ -44,7 +61,8 @@ def main():
         ("parent_node", None),
         ("manual_subq_key", 0),
         ("subqs", []),
-        ("df", load_example_data())
+        ("tipo_ejemplo_actual", None),
+        ("df", None),
     ]:
         if var not in st.session_state:
             st.session_state[var] = default
@@ -52,10 +70,38 @@ def main():
     st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
     st.title("Simulador Econométrico-Deliberativo para Decisiones de Consumo")
 
+    # --- Selector de tipo de modelo/datos de ejemplo ---
+    st.markdown("## Elige el tipo de ejemplo que quieres probar")
+    tipo_ejemplo = st.selectbox(
+        "Selecciona tipo de modelo para precargar datos de ejemplo:",
+        ["OLS", "Logit/Probit", "MNL", "Poisson"],
+        index=1,
+        help="Elige según el tipo de análisis que desees (puedes subir tus propios datos después)."
+    )
+
+    # Generar datos y resetear estado si cambia el tipo de ejemplo
+    if (st.session_state.df is None) or (st.session_state.get("tipo_ejemplo_actual") != tipo_ejemplo):
+        df, explicacion = generar_datos_ejemplo(tipo_ejemplo)
+        st.session_state.df = df
+        st.session_state.tipo_ejemplo_actual = tipo_ejemplo
+        reset_session_state()
+    else:
+        df = st.session_state.df
+        explicacion = {
+            "OLS": "Y es una variable continua (ideal para regresión OLS: ejemplo, salario, precio).",
+            "Logit/Probit": "Y es binaria (0/1): ideal para modelos Logit o Probit (por ejemplo, compra/no compra).",
+            "MNL": "Y tiene 3 categorías (0, 1, 2): ideal para Logit Multinomial (MNL), por ejemplo, elección entre 3 productos.",
+            "Poisson": "Y es una variable de conteo: ideal para Poisson (por ejemplo, número de compras, incidencias)."
+        }[tipo_ejemplo]
+
+    # Explicación para el usuario
+    st.info(f"**Ejemplo precargado:** {explicacion}")
+
     # --- CONTROL de subida de archivo y reset total ---
     uploaded = st.file_uploader("Sube un CSV con tus datos (incluye Y)", type="csv")
     if uploaded:
         st.session_state.df = pd.read_csv(uploaded)
+        st.session_state.tipo_ejemplo_actual = None
         reset_session_state()
         st.success("Nuevo archivo cargado. Por favor, selecciona variables explicativas y estima un modelo.")
         st.rerun()
@@ -69,6 +115,7 @@ def main():
     with tabs[0]:
         st.header("1. Datos")
         df = st.session_state.df
+        st.write(df.head())
         FEATURES = st.multiselect(
             "Selecciona variables explicativas:",
             [c for c in df.columns if c != "Y"],
@@ -86,7 +133,6 @@ def main():
         if not FEATURES:
             st.warning("Selecciona variables explicativas en la pestaña de datos.")
         else:
-            # Solo permitir MNL si Y tiene al menos 3 valores únicos
             y_unique = st.session_state.df['Y'].nunique()
             allowed_models = ["OLS", "Logit", "Probit", "Poisson"]
             if y_unique >= 3:

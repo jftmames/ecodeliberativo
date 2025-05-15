@@ -21,7 +21,7 @@ def check_model_diagnostics(
     df : pd.DataFrame
         DataFrame que contiene las variables features y target.
     model : objeto
-        Objeto entrenado con método .predict(X).
+        Objeto entrenado con método .predict(exog).
     features : List[str]
         Lista de nombres de columnas usadas como regresores.
     target : str, opcional
@@ -38,42 +38,53 @@ def check_model_diagnostics(
         }
     """
 
-    # Si no se indica target, lo inferimos como la última columna del DataFrame
+    # Inferir target si no se pasa
     if target is None:
         target = df.columns[-1]
 
-    # 1) Preparar X e y
+    # Preparamos X y y (sin constante)
     X = df[features]
     y = df[target]
 
-    # 2) Calcular predicciones robustamente
+    # Reconstruir exógeno tal cual el modelo lo espera
+    # (solo para statsmodels con atributo model.exog_names)
     try:
-        preds = model.predict(X)
+        exog_names = model.model.exog_names
+        exog = pd.DataFrame(index=df.index)
+        for name in exog_names:
+            if name.lower() in ['const', 'intercept']:
+                exog[name] = 1.0
+            else:
+                exog[name] = df[name]
+        preds = model.predict(exog)
     except Exception:
-        # En caso de que model.predict espere array numpy
-        preds = model.predict(X.values)
+        # Fallback: intentar con DataFrame de features
+        try:
+            preds = model.predict(X)
+        except Exception:
+            # Último recurso: array numpy
+            preds = model.predict(X.values)
 
-    # Forzar un array 1D y comprobar longitud
+    # Aplanar y chequear longitud
     preds = np.asarray(preds).flatten()
     if preds.shape[0] != df.shape[0]:
         raise ValueError(
-            f"Cantidad de predicciones ({preds.shape[0]}) "
-            f"no coincide con filas de datos ({df.shape[0]})."
+            f"Predicciones ({preds.shape[0]}) no coinciden con filas de datos ({df.shape[0]})."
         )
 
-    # 3) Construir DataFrame de análisis
+    # Construimos DataFrame de diagnóstico
     data = df.reset_index(drop=True).copy()
-    data['pred'] = preds
+    data['pred']  = preds
     data['resid'] = data[target] - data['pred']
 
-    # 4) Heterocedasticidad: Breusch–Pagan
-    bp_test = het_breuschpagan(data['resid'], X)
-    bp_pvalue = bp_test[3]
+    # 1) Heterocedasticidad: Breusch–Pagan
+    bp_test    = het_breuschpagan(data['resid'], exog if 'exog' in locals() else X)
+    bp_pvalue  = bp_test[3]
 
-    # 5) Normalidad de residuos: Jarque–Bera
+    # 2) Normalidad de residuos: Jarque–Bera
     jb_stat, jb_pvalue = stats.jarque_bera(data['resid'])
 
-    # 6) Multicolinealidad: VIF
+    # 3) Multicolinealidad: VIF (solo sobre X original)
     vif_dict: Dict[str, float] = {}
     X_np = X.values
     for i, feat in enumerate(features):
@@ -82,6 +93,6 @@ def check_model_diagnostics(
     return {
         'bp_pvalue': bp_pvalue,
         'jb_pvalue': jb_pvalue,
-        'vif': vif_dict,
+        'vif':       vif_dict,
         'residuals': data['resid']
     }

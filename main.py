@@ -8,6 +8,9 @@ from visualizations import graficar_elasticidades, graficar_simulacion_contrafac
 
 import networkx as nx
 import matplotlib.pyplot as plt
+import plotly.express as px
+import plotly.graph_objects as go
+
 
 st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
 

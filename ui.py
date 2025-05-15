@@ -167,7 +167,6 @@ def main():
         df = st.session_state.df
         st.write(df.head())
         if tipo_ejemplo == "Nested Logit":
-            # En datos apilados, elige variables aparte de obs_id, alt_id, choice y nest
             posibles = [c for c in df.columns if c not in ["obs_id", "alt_id", "choice", "nest"]]
         else:
             posibles = [c for c in df.columns if c != "Y"]
@@ -212,7 +211,6 @@ def main():
                     if model_name == "MNL":
                         st.session_state.model = fit_mnl(df, FEATURES)
                     elif model_name == "Nested Logit":
-                        # Nested Logit con pylogit (requiere datos apilados)
                         from econometrics import estimate_nested_logit_pylogit
                         st.session_state.model = estimate_nested_logit_pylogit(
                             df, st.session_state.nests, alt_id_col="alt_id", obs_id_col="obs_id", choice_col="choice"
@@ -221,7 +219,6 @@ def main():
                         st.session_state.model = estimate_model(model_name, X, y)
                     st.success(f"Modelo {model_name} estimado correctamente.")
                     st.write("Resumen del modelo:")
-                    # pylogit tiene su propio summary
                     if model_name == "Nested Logit":
                         st.text(st.session_state.model.summary())
                     else:
@@ -350,10 +347,61 @@ def main():
                     st.rerun()
                     return
 
+                # --- VISUALIZACIÓN CORREGIDA del árbol deliberativo ---
                 if steps:
                     st.subheader("Árbol deliberativo")
                     try:
                         import graphviz
                         dot = "digraph razonamiento {\n"
                         for idx, step in enumerate(steps):
-                            label = step["question"][:30].
+                            label = step["question"][:30].replace('"', "'")
+                            dot += f'{idx} [label="{label}"];\n'
+                            if step.get("parent") is not None:
+                                dot += f'{step["parent"]} -> {idx};\n'
+                        dot += "}"
+                        st.graphviz_chart(dot)
+                    except Exception:
+                        st.info("Visualización de árbol no disponible (instala graphviz en requirements.txt).")
+                    st.subheader("Métricas Epistémicas (EEE)")
+                    metrics = compute_eee(EpistemicNavigator.get_tracker(), max_steps=10)
+                    eeedf = pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"])
+                    eeedf.index.name = "Dimensión"
+                    st.table(eeedf)
+                else:
+                    st.info("Registra al menos una respuesta para ver el árbol y métricas.")
+
+        st.sidebar.markdown("Paso 3: Deliberación ⚙️")
+
+    # --- 4. Diagnóstico ---
+    with tabs[3]:
+        st.header("4. Diagnóstico del modelo")
+        FEATURES = st.session_state.FEATURES
+        if st.session_state.model is None:
+            st.warning("Debes estimar un modelo primero en la pestaña Econometría o Deliberación.")
+            st.stop()
+        diagnostics = check_model_diagnostics(st.session_state.df, st.session_state.model, FEATURES)
+        st.json(diagnostics)
+        st.sidebar.markdown("Paso 4: Diagnóstico ✅")
+
+    # --- 5. Informe ---
+    with tabs[4]:
+        st.header("5. Informe final")
+        FEATURES = st.session_state.FEATURES
+        if st.session_state.model is None:
+            st.warning("Debes estimar un modelo primero en la pestaña Econometría o Deliberación.")
+            st.stop()
+        if st.button("Generar informe"):
+            diagnostics = check_model_diagnostics(st.session_state.df, st.session_state.model, FEATURES)
+            report_bytes = build_report(st.session_state.df, st.session_state.model, st.session_state.engine, diagnostics)
+            is_pdf = report_bytes[:4] == b"%PDF"
+            filename = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
+            mime = "application/pdf" if is_pdf else "text/plain"
+            st.download_button(
+                "📥 Descargar Informe", data=report_bytes,
+                file_name=filename, mime=mime
+            )
+            st.success("Informe listo para descargar.")
+        st.sidebar.markdown("Paso 5: Informe 📄")
+
+if __name__ == "__main__":
+    main()

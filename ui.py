@@ -11,6 +11,32 @@ from epistemic_metrics import compute_eee
 from validation import check_model_diagnostics
 from report_generator import build_report
 
+# --- SIDEBAR EXPLICATIVO Y GLOSARIO ---
+st.sidebar.markdown("""
+#### ℹ️ Sobre el Simulador Deliberativo
+
+Esta aplicación aplica el paradigma del **Código Deliberativo**: 
+- Estructura y registra tu proceso de razonamiento, 
+- Calcula la métrica de Equilibrio Erotético (EEE), 
+- Permite justificar y explorar distintas trayectorias de deliberación.
+
+**No solo predices, sino que deliberas de forma plural, trazable y auditada.**
+""")
+with st.sidebar.expander("📖 Glosario de términos clave"):
+    st.markdown("""
+    - **Deliberación epistémica**: Proceso de razonamiento estructurado en torno a preguntas y respuestas.
+    - **EEE**: Índice que mide la calidad y robustez del proceso deliberativo.
+    - **Trayectoria deliberativa**: Camino de preguntas, subpreguntas y respuestas recorrido por el usuario.
+    - **Pluralidad**: Existencia de varias perspectivas o trayectorias alternativas.
+    - **Trazabilidad**: Posibilidad de reconstruir todo el proceso de razonamiento.
+    """)
+with st.sidebar.expander("❔ ¿Qué es el Código Deliberativo?"):
+    st.markdown("""
+    Es una arquitectura de IA explicativa y trazable. 
+    Registra, visualiza y evalúa el proceso de razonamiento mediante métricas como el EEE, 
+    promoviendo deliberación plural, justificativa y auditable.
+    """)
+
 def generar_datos_ejemplo(tipo):
     np.random.seed(42)
     n = 200
@@ -46,7 +72,7 @@ def generar_datos_ejemplo(tipo):
         n_personas = 100
         n_alternativas = 3
         data = []
-        nests = {0: [0, 1], 1: [2]}  # Ejemplo: alternativas 0 y 1 en un nest, 2 en otro
+        nests = {0: [0, 1], 1: [2]}
         for i in range(n_personas):
             ingreso = np.random.uniform(20, 100)
             edad = np.random.randint(18, 70)
@@ -105,7 +131,6 @@ def main():
     st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
     st.title("Simulador Econométrico-Deliberativo para Decisiones de Consumo")
 
-    # --- Selector de tipo de modelo/datos de ejemplo ---
     st.markdown("## Elige el tipo de ejemplo que quieres probar")
     tipo_ejemplo = st.selectbox(
         "Selecciona tipo de modelo para precargar datos de ejemplo:",
@@ -137,7 +162,6 @@ def main():
         }
         explicacion = explicaciones[tipo_ejemplo]
 
-    # Explicación para el usuario
     st.info(f"**Ejemplo precargado:** {explicacion}")
     if tipo_ejemplo == "Nested Logit":
         st.warning(
@@ -145,7 +169,6 @@ def main():
             "Las columnas mínimas son: 'obs_id' (id de la observación), 'alt_id' (id de alternativa), 'choice' (0/1 si fue elegida), más las variables explicativas y 'nest'."
         )
 
-    # --- CONTROL de subida de archivo y reset total ---
     uploaded = st.file_uploader("Sube un CSV con tus datos (incluye Y)", type="csv")
     if uploaded:
         st.session_state.df = pd.read_csv(uploaded)
@@ -178,6 +201,14 @@ def main():
         st.sidebar.markdown(f"Paso 1: Datos {'✅' if FEATURES else '⬜'}")
         if not FEATURES:
             st.warning("Selecciona al menos una variable.")
+        with st.expander("ℹ️ ¿Cómo elegir variables explicativas?"):
+            st.markdown("""
+            - Selecciona solo las variables que puedan influir razonablemente en la variable dependiente Y (o 'choice' para modelos apilados).
+            - Puedes elegir variables numéricas (precio, ingreso...) o categóricas (tras transformarlas a numéricas).
+            - Evita seleccionar variables que sean combinaciones lineales de otras o estén muy correlacionadas (multicolinealidad).
+            - En Nested Logit, selecciona solo variables disponibles por alternativa.
+            - Si tienes dudas, prueba con todas y revisa los diagnósticos del modelo.
+            """)
 
     # --- 2. Econometría ---
     with tabs[1]:
@@ -365,11 +396,58 @@ def main():
                         st.graphviz_chart(dot)
                     except Exception:
                         st.info("Visualización de árbol no disponible (instala graphviz en requirements.txt).")
+
+                    # Historial siempre visible
+                    st.markdown("**Historial de razonamiento y subpreguntas registradas:**")
+                    for idx, step in enumerate(steps):
+                        st.markdown(f"- **{step['question']}**  \n &nbsp;&nbsp;Respuesta: {step.get('answer','')}")
+
+                    # Métrica EEE con explicación
                     st.subheader("Métricas Epistémicas (EEE)")
+                    st.info(
+                        "El Índice de Equilibrio Erotético (EEE) refleja la calidad de la deliberación: "
+                        "más alto significa mayor profundidad, pluralidad, trazabilidad y reversibilidad en el razonamiento."
+                    )
                     metrics = compute_eee(EpistemicNavigator.get_tracker(), max_steps=10)
                     eeedf = pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"])
                     eeedf.index.name = "Dimensión"
                     st.table(eeedf)
+                    # Radar chart
+                    try:
+                        import plotly.graph_objects as go
+                        radar_metrics = eeedf["Valor"].to_dict()
+                        labels = list(radar_metrics.keys())
+                        values = list(radar_metrics.values())
+                        labels += [labels[0]]
+                        values += [values[0]]
+                        fig = go.Figure(data=go.Scatterpolar(
+                              r=values,
+                              theta=labels,
+                              fill='toself'
+                        ))
+                        fig.update_layout(
+                          polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
+                          showlegend=False,
+                          title="Radar chart: Índice EEE"
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    except Exception:
+                        st.info("Instala plotly en requirements.txt para radar chart EEE.")
+
+                    pluralidad = metrics.get('pluralidad', 0)
+                    if pluralidad < 0.5:
+                        st.warning("🔎 Para mejorar tu EEE, añade subpreguntas alternativas o explora trayectorias distintas.")
+                    elif pluralidad >= 0.8:
+                        st.success("¡Excelente! Tu deliberación muestra una pluralidad alta de trayectorias.")
+
+                    with st.expander("¿Qué mide cada dimensión del EEE?"):
+                        st.markdown("""
+                        - **Profundidad**: ¿Cuántos niveles de subpreguntas exploras?
+                        - **Pluralidad**: ¿Cuántas trayectorias o perspectivas distintas abres?
+                        - **Trazabilidad**: ¿Es posible reconstruir el razonamiento paso a paso?
+                        - **Reversibilidad**: ¿Revisas y reformulas tus preguntas o respuestas?
+                        """)
+
                 else:
                     st.info("Registra al menos una respuesta para ver el árbol y métricas.")
 

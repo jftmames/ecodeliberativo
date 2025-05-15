@@ -11,6 +11,9 @@ from epistemic_metrics import compute_eee
 from validation import check_model_diagnostics
 from report_generator import build_report
 
+# PRIMERA LLAMADA STREAMLIT: Configuración de página
+st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
+
 # --- SIDEBAR EXPLICATIVO Y GLOSARIO ---
 st.sidebar.markdown("""
 #### ℹ️ Sobre el Simulador Deliberativo
@@ -128,7 +131,6 @@ def main():
         if var not in st.session_state:
             st.session_state[var] = default
 
-    st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
     st.title("Simulador Econométrico-Deliberativo para Decisiones de Consumo")
 
     st.markdown("## Elige el tipo de ejemplo que quieres probar")
@@ -397,12 +399,10 @@ def main():
                     except Exception:
                         st.info("Visualización de árbol no disponible (instala graphviz en requirements.txt).")
 
-                    # Historial siempre visible
                     st.markdown("**Historial de razonamiento y subpreguntas registradas:**")
                     for idx, step in enumerate(steps):
                         st.markdown(f"- **{step['question']}**  \n &nbsp;&nbsp;Respuesta: {step.get('answer','')}")
 
-                    # Métrica EEE con explicación
                     st.subheader("Métricas Epistémicas (EEE)")
                     st.info(
                         "El Índice de Equilibrio Erotético (EEE) refleja la calidad de la deliberación: "
@@ -412,7 +412,6 @@ def main():
                     eeedf = pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"])
                     eeedf.index.name = "Dimensión"
                     st.table(eeedf)
-                    # Radar chart
                     try:
                         import plotly.graph_objects as go
                         radar_metrics = eeedf["Valor"].to_dict()

@@ -22,10 +22,12 @@ def generar_datos_ejemplo(tipo):
     if tipo == "OLS":
         df["Y"] = 1.5 * df["precio"] + 0.2 * df["ingreso"] + np.random.normal(0, 2, n)
         explicacion = "Y es una variable continua (ideal para regresión OLS: ejemplo, salario, precio)."
+        nests = None
     elif tipo == "Logit/Probit":
         logits = 1 / (1 + np.exp(-(-1 + 0.3*df["precio"] - 0.05*df["ingreso"])))
         df["Y"] = np.random.binomial(1, logits)
         explicacion = "Y es binaria (0/1): ideal para modelos Logit o Probit (por ejemplo, compra/no compra)."
+        nests = None
     elif tipo == "MNL":
         logits1 = 1 / (1 + np.exp(-(-1 + 0.2*df["precio"] - 0.05*df["ingreso"])))
         logits2 = 1 / (1 + np.exp(-(0.5 - 0.1*df["precio"] + 0.07*df["edad"])))
@@ -34,13 +36,46 @@ def generar_datos_ejemplo(tipo):
         probs = probs / probs.sum(axis=1, keepdims=True)
         df["Y"] = [np.random.choice([0, 1, 2], p=p) for p in probs]
         explicacion = "Y tiene 3 categorías (0, 1, 2): ideal para Logit Multinomial (MNL), por ejemplo, elección entre 3 productos."
+        nests = None
     elif tipo == "Poisson":
         mu = np.exp(0.5 + 0.1*df["precio"] - 0.02*df["ingreso"])
         df["Y"] = np.random.poisson(mu)
         explicacion = "Y es una variable de conteo: ideal para Poisson (por ejemplo, número de compras, incidencias)."
+        nests = None
+    elif tipo == "Nested Logit":
+        # Datos apilados
+        n_personas = 100
+        n_alternativas = 3
+        data = []
+        nests = {0: [0, 1], 1: [2]}  # Ejemplo: alternativas 0 y 1 en un nest, 2 en otro
+        for i in range(n_personas):
+            ingreso = np.random.uniform(20, 100)
+            edad = np.random.randint(18, 70)
+            precios = np.random.uniform(1, 10, n_alternativas)
+            utilidades = -0.5*precios + 0.03*ingreso + 0.01*edad + np.random.normal(0,1, n_alternativas)
+            exp_utilidades = np.exp(utilidades - np.max(utilidades))
+            probs = exp_utilidades / exp_utilidades.sum()
+            eleccion = np.random.choice(range(n_alternativas), p=probs)
+            for j in range(n_alternativas):
+                data.append({
+                    "obs_id": i,
+                    "alt_id": j,
+                    "choice": int(j == eleccion),
+                    "precio": precios[j],
+                    "ingreso": ingreso,
+                    "edad": edad,
+                    "nest": 0 if j in [0,1] else 1
+                })
+        df = pd.DataFrame(data)
+        explicacion = (
+            "Y = 'choice' (0/1), datos apilados: cada fila es una alternativa disponible por persona. "
+            "Columnas mínimas: 'obs_id', 'alt_id', 'choice', variables explicativas. "
+            "Ejemplo ideal para Nested Logit (pylogit)."
+        )
     else:
         explicacion = "Tipo no reconocido."
-    return df, explicacion
+        nests = None
+    return df, explicacion, nests
 
 def reset_session_state():
     st.session_state.model = None
@@ -63,6 +98,7 @@ def main():
         ("subqs", []),
         ("tipo_ejemplo_actual", None),
         ("df", None),
+        ("nests", None),
     ]:
         if var not in st.session_state:
             st.session_state[var] = default
@@ -74,32 +110,47 @@ def main():
     st.markdown("## Elige el tipo de ejemplo que quieres probar")
     tipo_ejemplo = st.selectbox(
         "Selecciona tipo de modelo para precargar datos de ejemplo:",
-        ["OLS", "Logit/Probit", "MNL", "Poisson"],
+        ["OLS", "Logit/Probit", "MNL", "Poisson", "Nested Logit"],
         index=1,
         help="Elige según el tipo de análisis que desees (puedes subir tus propios datos después)."
     )
 
     # Generar datos y resetear estado si cambia el tipo de ejemplo
     if (st.session_state.df is None) or (st.session_state.get("tipo_ejemplo_actual") != tipo_ejemplo):
-        df, explicacion = generar_datos_ejemplo(tipo_ejemplo)
+        df, explicacion, nests = generar_datos_ejemplo(tipo_ejemplo)
         st.session_state.df = df
+        st.session_state.nests = nests
         st.session_state.tipo_ejemplo_actual = tipo_ejemplo
         reset_session_state()
     else:
         df = st.session_state.df
-        explicacion = {
+        nests = st.session_state.nests
+        explicaciones = {
             "OLS": "Y es una variable continua (ideal para regresión OLS: ejemplo, salario, precio).",
             "Logit/Probit": "Y es binaria (0/1): ideal para modelos Logit o Probit (por ejemplo, compra/no compra).",
             "MNL": "Y tiene 3 categorías (0, 1, 2): ideal para Logit Multinomial (MNL), por ejemplo, elección entre 3 productos.",
-            "Poisson": "Y es una variable de conteo: ideal para Poisson (por ejemplo, número de compras, incidencias)."
-        }[tipo_ejemplo]
+            "Poisson": "Y es una variable de conteo: ideal para Poisson (por ejemplo, número de compras, incidencias).",
+            "Nested Logit": (
+                "Y = 'choice' (0/1), datos apilados: cada fila es una alternativa disponible por persona. "
+                "Columnas mínimas: 'obs_id', 'alt_id', 'choice', variables explicativas. "
+                "Ejemplo ideal para Nested Logit (pylogit)."
+            )
+        }
+        explicacion = explicaciones[tipo_ejemplo]
 
+    # Explicación para el usuario
     st.info(f"**Ejemplo precargado:** {explicacion}")
+    if tipo_ejemplo == "Nested Logit":
+        st.warning(
+            "⚠️ El modelo Nested Logit requiere datos apilados/stacked, es decir, cada fila representa una alternativa disponible para cada observación. "
+            "Las columnas mínimas son: 'obs_id' (id de la observación), 'alt_id' (id de alternativa), 'choice' (0/1 si fue elegida), más las variables explicativas y 'nest'."
+        )
 
     # --- CONTROL de subida de archivo y reset total ---
     uploaded = st.file_uploader("Sube un CSV con tus datos (incluye Y)", type="csv")
     if uploaded:
         st.session_state.df = pd.read_csv(uploaded)
+        st.session_state.nests = None
         st.session_state.tipo_ejemplo_actual = None
         reset_session_state()
         st.success("Nuevo archivo cargado. Por favor, selecciona variables explicativas y estima un modelo.")
@@ -115,9 +166,14 @@ def main():
         st.header("1. Datos")
         df = st.session_state.df
         st.write(df.head())
+        if tipo_ejemplo == "Nested Logit":
+            # En datos apilados, elige variables aparte de obs_id, alt_id, choice y nest
+            posibles = [c for c in df.columns if c not in ["obs_id", "alt_id", "choice", "nest"]]
+        else:
+            posibles = [c for c in df.columns if c != "Y"]
         FEATURES = st.multiselect(
             "Selecciona variables explicativas:",
-            [c for c in df.columns if c != "Y"],
+            posibles,
             default=st.session_state.FEATURES
         )
         st.session_state.FEATURES = FEATURES
@@ -132,30 +188,44 @@ def main():
         if not FEATURES:
             st.warning("Selecciona variables explicativas en la pestaña de datos.")
         else:
-            # En el bloque del selector de modelo:
-            y_unique = st.session_state.df['Y'].nunique()
+            y_unique = st.session_state.df["Y"].nunique() if "Y" in st.session_state.df.columns else 2
             allowed_models = ["OLS", "Logit", "Probit", "Poisson"]
-            if y_unique >= 3:
+            if y_unique >= 3 and tipo_ejemplo != "Nested Logit":
                 allowed_models.append("MNL")
+            if tipo_ejemplo == "Nested Logit" or (st.session_state.df is not None and "choice" in st.session_state.df.columns):
+                allowed_models.append("Nested Logit")
             allowed_models.append("Tobit")
-            allowed_models.append("Nested Logit")
 
             model_name = st.selectbox(
                 "Selecciona el modelo econométrico",
                 allowed_models,
                 key="modelo_econometrico"
             )
-            X = df[FEATURES]
-            y = df["Y"]
+            if tipo_ejemplo == "Nested Logit" or model_name == "Nested Logit":
+                X = df[FEATURES]
+                y = df["choice"]
+            else:
+                X = df[FEATURES]
+                y = df["Y"]
             if st.button(f"Estimar modelo {model_name}"):
                 with st.spinner(f"Estimando modelo {model_name}..."):
                     if model_name == "MNL":
                         st.session_state.model = fit_mnl(df, FEATURES)
+                    elif model_name == "Nested Logit":
+                        # Nested Logit con pylogit (requiere datos apilados)
+                        from econometrics import estimate_nested_logit_pylogit
+                        st.session_state.model = estimate_nested_logit_pylogit(
+                            df, st.session_state.nests, alt_id_col="alt_id", obs_id_col="obs_id", choice_col="choice"
+                        )
                     else:
                         st.session_state.model = estimate_model(model_name, X, y)
                     st.success(f"Modelo {model_name} estimado correctamente.")
                     st.write("Resumen del modelo:")
-                    st.text(st.session_state.model.summary())
+                    # pylogit tiene su propio summary
+                    if model_name == "Nested Logit":
+                        st.text(st.session_state.model.summary())
+                    else:
+                        st.text(st.session_state.model.summary())
                 st.rerun()
                 return
 
@@ -175,6 +245,8 @@ def main():
                     sim_probs = predict_mnl(st.session_state.model, df_new, FEATURES)
                     st.dataframe(sim_probs)
                     st.bar_chart(sim_probs.T)
+                elif model_name == "Nested Logit":
+                    st.text(st.session_state.model.summary())
                 else:
                     coefs = st.session_state.model.params.reset_index()
                     coefs.columns = ["Variable", "Coeficiente"]
@@ -284,54 +356,4 @@ def main():
                         import graphviz
                         dot = "digraph razonamiento {\n"
                         for idx, step in enumerate(steps):
-                            label = step["question"][:30].replace('"', "'")
-                            dot += f'{idx} [label="{label}"];\n'
-                            if step.get("parent") is not None:
-                                dot += f'{step["parent"]} -> {idx};\n'
-                        dot += "}"
-                        st.graphviz_chart(dot)
-                    except Exception:
-                        st.info("Visualización de árbol no disponible (instala graphviz en requirements.txt).")
-                    st.subheader("Métricas Epistémicas (EEE)")
-                    metrics = compute_eee(EpistemicNavigator.get_tracker(), max_steps=10)
-                    eeedf = pd.DataFrame.from_dict(metrics, orient="index", columns=["Valor"])
-                    eeedf.index.name = "Dimensión"
-                    st.table(eeedf)
-                else:
-                    st.info("Registra al menos una respuesta para ver el árbol y métricas.")
-
-        st.sidebar.markdown("Paso 3: Deliberación ⚙️")
-
-    # --- 4. Diagnóstico ---
-    with tabs[3]:
-        st.header("4. Diagnóstico del modelo")
-        FEATURES = st.session_state.FEATURES
-        if st.session_state.model is None:
-            st.warning("Debes estimar un modelo primero en la pestaña Econometría o Deliberación.")
-            st.stop()
-        diagnostics = check_model_diagnostics(st.session_state.df, st.session_state.model, FEATURES)
-        st.json(diagnostics)
-        st.sidebar.markdown("Paso 4: Diagnóstico ✅")
-
-    # --- 5. Informe ---
-    with tabs[4]:
-        st.header("5. Informe final")
-        FEATURES = st.session_state.FEATURES
-        if st.session_state.model is None:
-            st.warning("Debes estimar un modelo primero en la pestaña Econometría o Deliberación.")
-            st.stop()
-        if st.button("Generar informe"):
-            diagnostics = check_model_diagnostics(st.session_state.df, st.session_state.model, FEATURES)
-            report_bytes = build_report(st.session_state.df, st.session_state.model, st.session_state.engine, diagnostics)
-            is_pdf = report_bytes[:4] == b"%PDF"
-            filename = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
-            mime = "application/pdf" if is_pdf else "text/plain"
-            st.download_button(
-                "📥 Descargar Informe", data=report_bytes,
-                file_name=filename, mime=mime
-            )
-            st.success("Informe listo para descargar.")
-        st.sidebar.markdown("Paso 5: Informe 📄")
-
-if __name__ == "__main__":
-    main()
+                            label = step["question"][:30].

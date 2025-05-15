@@ -1,5 +1,3 @@
-# econometrics.py
-
 import statsmodels.api as sm
 import numpy as np
 
@@ -20,7 +18,6 @@ def estimate_poisson(X, y):
     return sm.Poisson(y, X).fit()
 
 def estimate_tobit(X, y, left=0, right=np.inf):
-    # Usa linearmodels para Tobit (debes instalar: pip install linearmodels)
     try:
         from linearmodels.iv import Tobit
     except ImportError:
@@ -30,19 +27,22 @@ def estimate_tobit(X, y, left=0, right=np.inf):
     res = mod.fit()
     return res
 
-def estimate_nested_logit_pylogit(df_long, nests, alt_id_col="alt_id", obs_id_col="obs_id", choice_col="choice"):
+def estimate_nested_logit_pylogit(
+    df_long, nests, features, alt_id_col="alt_id", obs_id_col="obs_id", choice_col="choice"
+):
     """
-    Ajusta un modelo Nested Logit con pylogit sobre un DataFrame apilado.
-    - df_long: DataFrame en formato long (apilado)
-    - nests: dict {nest_id: [alt_id1, alt_id2, ...], ...}
+    Ajusta Nested Logit usando pylogit y las variables seleccionadas.
+    - df_long: DataFrame apilado
+    - nests: dict {nest_id: [alt_id1, alt_id2, ...]}
+    - features: lista de columnas a usar como explicativas
     """
     try:
         import pylogit
     except ImportError:
         raise ImportError("Instala pylogit para usar Nested Logit: pip install pylogit")
-
-    # Sólo se utiliza la variable 'precio' como ejemplo (ajusta aquí según tus features)
-    specification = {col: ["all_alternatives"] for col in df_long.columns if col not in [alt_id_col, obs_id_col, choice_col, "nest"]}
+    if not features:
+        raise ValueError("Debes seleccionar al menos una variable explicativa para Nested Logit.")
+    specification = {col: ["all_alternatives"] for col in features}
     model = pylogit.create_choice_model(
         data=df_long,
         alt_id_col=alt_id_col,
@@ -50,7 +50,7 @@ def estimate_nested_logit_pylogit(df_long, nests, alt_id_col="alt_id", obs_id_co
         choice_col=choice_col,
         specification=specification,
         model_type="Nested Logit",
-        names={col: col.capitalize() for col in specification.keys()},
+        names={col: col.capitalize() for col in features},
         nest_spec=nests
     )
     model.fit_mle(init_vals=None)

@@ -44,13 +44,17 @@ def main():
     st.sidebar.header("Modelos a analizar")
     modelos_seleccionados = st.sidebar.multiselect("Selecciona uno o varios modelos", modelos_disponibles, default=["Logit"])
 
+    if "Tobit" in modelos_seleccionados:
+        st.warning("El modelo Tobit está temporalmente deshabilitado por incompatibilidad con la versión actual de Python.")
+        modelos_seleccionados = [m for m in modelos_seleccionados if m != "Tobit"]
+        if not modelos_seleccionados:
+            st.stop()
+
     params_dict = {}
     for modelo in modelos_seleccionados:
         if modelo == "Tobit":
-            st.sidebar.markdown(f"**Parámetros Tobit para {modelo}**")
-            left = st.sidebar.number_input(f"{modelo} - Límite inferior (left)", value=0.0, key=f"left_{modelo}")
-            right = st.sidebar.number_input(f"{modelo} - Límite superior (right)", value=float("inf"), key=f"right_{modelo}")
-            params_dict[modelo] = {"left": left, "right": right}
+            # No se usará pero se deja por compatibilidad
+            params_dict[modelo] = {}
         else:
             params_dict[modelo] = {}
 

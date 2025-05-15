@@ -3,7 +3,7 @@ import pandas as pd
 from econometrics import run_model
 from deliberation_engine import preguntar_deliberativo
 from report_generator import generar_informe_html
-from epistemic_metrics import calcular_eee, perfil_eee
+from epistemic_metrics import calcular_metricas_deliberativas, perfil_eee
 
 import networkx as nx
 import matplotlib.pyplot as plt
@@ -61,8 +61,7 @@ def main():
         aics = {}
         bics = {}
         summaries = {}
-        # Borra respuestas almacenadas al ejecutar modelos nuevos
-        st.session_state["deliberation_answers"] = {}
+        st.session_state["deliberation_answers"] = {}  # limpiar respuestas al nuevo análisis
         for modelo in modelos_seleccionados:
             try:
                 res = run_model(df, modelo, y_var, x_vars, **params_dict.get(modelo, {}))
@@ -70,7 +69,6 @@ def main():
                 aics[modelo] = res["diagnostics"].get("AIC", None)
                 bics[modelo] = res["diagnostics"].get("BIC", None)
                 summaries[modelo] = res["summary"]
-                # Guardamos resultados para acceso global
                 st.session_state["resultados_modelos"] = resultados_modelos
                 st.session_state["aics"] = aics
                 st.session_state["bics"] = bics
@@ -78,13 +76,11 @@ def main():
             except Exception as e:
                 st.error(f"Error en modelo {modelo}: {e}")
     else:
-        # Recuperar resultados previos si existen
         resultados_modelos = st.session_state.get("resultados_modelos", {})
         aics = st.session_state.get("aics", {})
         bics = st.session_state.get("bics", {})
         summaries = st.session_state.get("summaries", {})
 
-    # Elegir modelo principal válido
     modelo_ref = None
     if resultados_modelos:
         for m in modelos_seleccionados:
@@ -175,10 +171,14 @@ def main():
             except Exception as ex:
                 st.info("No se pudo dibujar el árbol epistémico. Error: " + str(ex))
 
-            eee = calcular_eee(respuestas_usuario)
-            st.subheader("Índice de Equilibrio Erotético (EEE)")
-            st.metric("EEE", eee)
-            st.caption(perfil_eee(eee))
+            metricas = calcular_metricas_deliberativas(respuestas_usuario)
+            st.subheader("Métricas deliberativas detalladas")
+            st.metric("EEE (Índice de Equilibrio Erotético)", metricas['EEE'])
+            st.metric("Coherencia", metricas['Coherencia'])
+            st.metric("Profundidad (palabras promedio)", metricas['Profundidad'])
+            st.metric("Cobertura (proporción respuestas)", metricas['Cobertura'])
+            st.metric("Exploración", metricas['Exploración'])
+            st.caption(perfil_eee(metricas['EEE']))
 
             st.markdown("### 🗣️ ¿Qué interpretación sugieres a partir de este resultado?")
             feedback_user = st.text_area("Tu interpretación/reflexión:", key="feedback_user")
@@ -258,10 +258,9 @@ def main():
 
             st.markdown("---")
             st.subheader("Informe deliberativo")
-            # Verifica que existan respuestas y feedback para enviar
             respuestas_usuario = st.session_state.get("deliberation_answers", {})
             feedback_user = st.session_state.get("feedback_user", "")
-            eee = calcular_eee(respuestas_usuario) if respuestas_usuario else None
+            eee = metricas['EEE'] if 'metricas' in locals() else None
 
             if st.button("Generar informe HTML", key="gen_html"):
                 informe_html = generar_informe_html(

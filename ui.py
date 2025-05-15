@@ -144,8 +144,8 @@ def main():
             st.session_state.root_prompt = None
         if "parent_node" not in st.session_state:
             st.session_state.parent_node = None
-        if "manual_subq_val" not in st.session_state:
-            st.session_state.manual_subq_val = ""
+        if "manual_subq_key" not in st.session_state:
+            st.session_state.manual_subq_key = 0
 
         if not FEATURES:
             st.warning("Debes seleccionar variables explicativas en la pestaña de datos para deliberar.")
@@ -171,21 +171,17 @@ def main():
                         EpistemicNavigator.record(q, ans, parent=0)
 
                 st.markdown("**Añadir subpregunta manual:**")
-                # Utiliza auxiliar para mantener y resetear el valor
+                # Rotación del key para limpiar el input tras añadir
                 new_subq = st.text_input(
                     "Nueva subpregunta",
-                    value=st.session_state.manual_subq_val,
-                    key="manual_subq_input",
+                    key=f"manual_subq_input_{st.session_state.manual_subq_key}",
                     placeholder="Introduce una subpregunta y pulsa Añadir",
                 )
-                # Sincroniza la variable auxiliar
-                st.session_state.manual_subq_val = new_subq
 
                 if st.button("Añadir subpregunta manual"):
                     if new_subq.strip():
                         EpistemicNavigator.add_step(new_subq.strip(), parent=0)
-                        # Reseteo automático del campo (sin modificar el key del widget)
-                        st.session_state.manual_subq_val = ""
+                        st.session_state.manual_subq_key += 1  # Cambia el key, fuerza rerender limpio
                         st.experimental_rerun()
                         return
                     else:
@@ -195,7 +191,7 @@ def main():
                     EpistemicNavigator.clear_tracker()
                     st.session_state.root_prompt = None
                     st.session_state.subqs = []
-                    st.session_state.manual_subq_val = ""
+                    st.session_state.manual_subq_key = 0
                     st.experimental_rerun()
                     return
 

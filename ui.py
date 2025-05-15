@@ -32,28 +32,22 @@ def reset_session_state():
     st.session_state.subqs = []
     st.session_state.manual_subq_key = 0
     st.session_state.parent_node = None
-    if "engine" not in st.session_state:
-        st.session_state.engine = DeliberationEngine()
     EpistemicNavigator.clear_tracker()
 
 def main():
-    # --- Inicialización robusta del estado ---
-    if "model" not in st.session_state:
-        st.session_state.model = None
-    if "FEATURES" not in st.session_state:
-        st.session_state.FEATURES = []
-    if "engine" not in st.session_state:
-        st.session_state.engine = DeliberationEngine()
-    if "root_prompt" not in st.session_state:
-        st.session_state.root_prompt = None
-    if "parent_node" not in st.session_state:
-        st.session_state.parent_node = None
-    if "manual_subq_key" not in st.session_state:
-        st.session_state.manual_subq_key = 0
-    if "subqs" not in st.session_state:
-        st.session_state.subqs = []
-    if "df" not in st.session_state:
-        st.session_state.df = load_example_data()
+    # --- Inicialización del estado ---
+    for var, default in [
+        ("model", None),
+        ("FEATURES", []),
+        ("engine", DeliberationEngine()),
+        ("root_prompt", None),
+        ("parent_node", None),
+        ("manual_subq_key", 0),
+        ("subqs", []),
+        ("df", load_example_data())
+    ]:
+        if var not in st.session_state:
+            st.session_state[var] = default
 
     st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
     st.title("Simulador Econométrico-Deliberativo para Decisiones de Consumo")
@@ -67,31 +61,26 @@ def main():
         st.header("1. Datos")
         uploaded = st.file_uploader("Sube un CSV con tus datos (incluye Y)", type="csv")
         if uploaded:
-            df = pd.read_csv(uploaded)
-            st.session_state.df = df
-            reset_session_state()  # ¡RESET total aquí!
+            st.session_state.df = pd.read_csv(uploaded)
+            reset_session_state()
             st.success("Nuevo archivo cargado. Por favor, selecciona variables explicativas y estima un modelo.")
             st.experimental_rerun()
             return
-        else:
-            df = st.session_state.df
+        df = st.session_state.df
         FEATURES = st.multiselect(
             "Selecciona variables explicativas:",
             [c for c in df.columns if c != "Y"],
             default=st.session_state.FEATURES
         )
         st.session_state.FEATURES = FEATURES
+        st.sidebar.markdown(f"Paso 1: Datos {'✅' if FEATURES else '⬜'}")
         if not FEATURES:
             st.warning("Selecciona al menos una variable.")
-        else:
-            st.success(f"Variables seleccionadas: {FEATURES}")
-        st.sidebar.markdown(f"Paso 1: Datos {'✅' if FEATURES else '⬜'}")
 
     # --- 2. Econometría ---
     with tabs[1]:
         st.header("2. Econometría")
         FEATURES = st.session_state.FEATURES
-        model = st.session_state.model
         if not FEATURES:
             st.warning("Selecciona variables explicativas en la pestaña de datos.")
         else:
@@ -102,26 +91,22 @@ def main():
             )
             X = df[FEATURES]
             y = df["Y"]
-
             if st.button(f"Estimar modelo {model_name}"):
                 with st.spinner(f"Estimando modelo {model_name}..."):
                     if model_name == "MNL":
-                        model = fit_mnl(df, FEATURES)
+                        st.session_state.model = fit_mnl(df, FEATURES)
                     else:
-                        model = estimate_model(model_name, X, y)
-                    st.session_state.model = model
+                        st.session_state.model = estimate_model(model_name, X, y)
                     st.success(f"Modelo {model_name} estimado correctamente.")
                     st.write("Resumen del modelo:")
-                    st.text(model.summary())
+                    st.text(st.session_state.model.summary())
                 st.experimental_rerun()
                 return
 
-            model = st.session_state.model
-
-            if model is not None:
+            if st.session_state.model is not None:
                 if model_name == "MNL":
                     st.markdown("#### Probabilidades (dataset completo)")
-                    prob_df = predict_mnl(model, df, FEATURES)
+                    prob_df = predict_mnl(st.session_state.model, df, FEATURES)
                     st.dataframe(prob_df)
                     st.subheader("Probabilidades (gráfico)")
                     st.line_chart(prob_df)
@@ -131,20 +116,19 @@ def main():
                         mi, ma = float(df[feat].min()), float(df[feat].max())
                         sim_vals[feat] = st.slider(f"{feat}", mi, ma, float(df[feat].median()), key=f"sim_mnl_{feat}")
                     df_new = pd.DataFrame([sim_vals])
-                    sim_probs = predict_mnl(model, df_new, FEATURES)
+                    sim_probs = predict_mnl(st.session_state.model, df_new, FEATURES)
                     st.dataframe(sim_probs)
                     st.bar_chart(sim_probs.T)
                 else:
-                    coefs = model.params.reset_index()
+                    coefs = st.session_state.model.params.reset_index()
                     coefs.columns = ["Variable", "Coeficiente"]
-                    coefs["p-valor"] = model.pvalues.values
+                    coefs["p-valor"] = st.session_state.model.pvalues.values
                     coefs["Interpretación"] = [
                         "Incrementa" if c > 0 else "Reduce" for c in coefs["Coeficiente"]
                     ]
                     st.dataframe(coefs)
-
                     try:
-                        elas_df = compute_elasticities(model, df, FEATURES)
+                        elas_df = compute_elasticities(st.session_state.model, df, FEATURES)
                         st.subheader("Elasticidades")
                         st.table(elas_df)
                         if not elas_df["Elasticidad"].isnull().all():
@@ -165,10 +149,10 @@ def main():
                     import statsmodels.api as sm
                     Xnew = sm.add_constant(Xnew, has_constant="add")
                     try:
-                        pred = model.predict(Xnew)[0]
+                        pred = st.session_state.model.predict(Xnew)[0]
                     except Exception:
                         pred = np.nan
-                    if "Logit" in str(type(model)) or "Probit" in str(type(model)):
+                    if "Logit" in str(type(st.session_state.model)) or "Probit" in str(type(st.session_state.model)):
                         st.write(f"**Probabilidad estimada** = {pred:.3f}")
                     else:
                         st.write(f"**Y estimado** = {pred:.3f}")
@@ -179,11 +163,9 @@ def main():
     with tabs[2]:
         st.header("3. Deliberación epistémica")
         FEATURES = st.session_state.FEATURES
-        model = st.session_state.model
-
         if not FEATURES:
             st.warning("Debes seleccionar variables explicativas en la pestaña de datos para deliberar.")
-        elif model is None:
+        elif st.session_state.model is None:
             st.warning("Debes estimar un modelo primero para simulación, diagnóstico e informe.")
             if st.button("Estimar modelo automáticamente desde Deliberación"):
                 df = st.session_state.df
@@ -192,8 +174,7 @@ def main():
                 X = sm.add_constant(df[FEATURES], has_constant="add")
                 y = df["Y"]
                 from statsmodels.discrete.discrete_model import Logit
-                model = Logit(y, X).fit(disp=False)
-                st.session_state.model = model
+                st.session_state.model = Logit(y, X).fit(disp=False)
                 st.success(f"Modelo {model_name} estimado automáticamente.")
                 st.experimental_rerun()
                 return
@@ -269,11 +250,10 @@ def main():
     with tabs[3]:
         st.header("4. Diagnóstico del modelo")
         FEATURES = st.session_state.FEATURES
-        model = st.session_state.model
-        if model is None:
+        if st.session_state.model is None:
             st.warning("Debes estimar un modelo primero en la pestaña Econometría o Deliberación.")
             st.stop()
-        diagnostics = check_model_diagnostics(st.session_state.df, model, FEATURES)
+        diagnostics = check_model_diagnostics(st.session_state.df, st.session_state.model, FEATURES)
         st.json(diagnostics)
         st.sidebar.markdown("Paso 4: Diagnóstico ✅")
 
@@ -281,13 +261,12 @@ def main():
     with tabs[4]:
         st.header("5. Informe final")
         FEATURES = st.session_state.FEATURES
-        model = st.session_state.model
-        if model is None:
+        if st.session_state.model is None:
             st.warning("Debes estimar un modelo primero en la pestaña Econometría o Deliberación.")
             st.stop()
         if st.button("Generar informe"):
-            diagnostics = check_model_diagnostics(st.session_state.df, model, FEATURES)
-            report_bytes = build_report(st.session_state.df, model, st.session_state.engine, diagnostics)
+            diagnostics = check_model_diagnostics(st.session_state.df, st.session_state.model, FEATURES)
+            report_bytes = build_report(st.session_state.df, st.session_state.model, st.session_state.engine, diagnostics)
             is_pdf = report_bytes[:4] == b"%PDF"
             filename = "informe_deliberativo.pdf" if is_pdf else "informe_deliberativo.txt"
             mime = "application/pdf" if is_pdf else "text/plain"
@@ -300,3 +279,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -1,98 +1,84 @@
 # validation.py
 
-import pandas as pd
 import numpy as np
-import statsmodels.api as sm
-from statsmodels.stats.outliers_influence import variance_inflation_factor
+import pandas as pd
+from typing import Any, Dict, List
 from statsmodels.stats.diagnostic import het_breuschpagan
 from scipy import stats
+from statsmodels.stats.outliers_influence import variance_inflation_factor
 
-def check_model_diagnostics(df: pd.DataFrame, model, features: list[str]) -> dict:
+def check_model_diagnostics(
+    df: pd.DataFrame,
+    model: Any,
+    features: List[str],
+    target: str
+) -> Dict[str, Any]:
     """
-    Realiza diagnósticos para el modelo ajustado.
+    Ajusta diagnósticos básicos para un modelo de regresión.
     
-    - Para OLS:
-      * VIF de cada variable explicativa.
-      * Test de Breusch-Pagan (heterocedasticidad).
-      * R-squared y RMSE.
-    - Para Logit:
-      * Pseudo R-squared (McFadden).
-      * Test de razón de verosimilitud.
-      * Estadístico de Hosmer-Lemeshow (aprox.).
-    - Para MNL: vacía (por implementar).
+    Parámetros
+    ----------
+    df : pd.DataFrame
+        DataFrame que contiene las variables features y target.
+    model : objeto
+        Objeto entrenado con método .predict(X).
+    features : List[str]
+        Lista de nombres de columnas usadas como regresores.
+    target : str
+        Nombre de la columna objetivo.
     
-    Devuelve un dict con diagnósticos.
+    Devuelve
+    -------
+    dict
+        {
+            'bp_pvalue': float,         # p-valor test Breusch–Pagan
+            'jb_pvalue': float,         # p-valor test Jarque–Bera
+            'vif': Dict[str, float],    # VIF por cada feature
+            'residuals': pd.Series      # residuos calculados
+        }
     """
-    results = {}
-    model_name = type(model.model).__name__
 
-    # Preparamos X y y comunes
-    X = sm.add_constant(df[features], has_constant='add')
-    y = df['Y']
+    # 1) Preparar X e y
+    X = df[features]
+    y = df[target]
 
-    if 'OLS' in model_name:
-        # R-squared y RMSE
-        results['R-squared'] = model.rsquared
-        results['RMSE'] = float(np.sqrt(model.mse_resid))
+    # 2) Calcular predicciones robustamente
+    try:
+        preds = model.predict(X)
+    except Exception:
+        # En caso de que model.predict espere array numpy
+        preds = model.predict(X.values)
 
-        # VIF
-        vif_data = []
-        for i, feat in enumerate(X.columns):
-            if feat == 'const':
-                continue
-            vif = variance_inflation_factor(X.values, i)
-            vif_data.append({'variable': feat, 'VIF': vif})
-        results['VIF'] = vif_data
+    # Forzar un array 1D y comprobar longitud
+    preds = np.asarray(preds).flatten()
+    if preds.shape[0] != df.shape[0]:
+        raise ValueError(
+            f"Cantidad de predicciones ({preds.shape[0]}) "
+            f"no coincide con filas de datos ({df.shape[0]})."
+        )
 
-        # Breusch-Pagan
-        bp_test = het_breuschpagan(model.resid, model.model.exog)
-        results['Breusch-Pagan'] = {
-            'LM_stat': bp_test[0],
-            'LM_pvalue': bp_test[1],
-            'F_stat': bp_test[2],
-            'F_pvalue': bp_test[3]
-        }
+    # 3) Construir DataFrame de análisis
+    data = df.reset_index(drop=True).copy()
+    data['pred'] = preds
+    data['resid'] = data[target] - data['pred']
 
-    elif 'Logit' in model_name:
-        # Pseudo R2
-        results['Pseudo R-squared (McFadden)'] = model.prsquared
+    # 4) Heterocedasticidad: Breusch–Pagan
+    #    Regresores en forma de matriz (statsmodels los requiere así)
+    bp_test = het_breuschpagan(data['resid'], X)
+    bp_pvalue = bp_test[3]
 
-        # Likelihood ratio test
-        llr, pval, df_diff = model.llr, model.llr_pvalue, model.df_model
-        results['Likelihood Ratio'] = {
-            'LLR_stat': llr,
-            'p-value': pval,
-            'df_model': df_diff
-        }
+    # 5) Normalidad de residuos: Jarque–Bera
+    jb_stat, jb_pvalue = stats.jarque_bera(data['resid'])
 
-        # Hosmer-Lemeshow (aprox): agrupamos en 10 deciles
-        data = X.copy()
-        data['Y'] = y
-        data['pred'] = model.predict(X)
-        data['decile'] = pd.qcut(data['pred'], 10, labels=False)
-        hl = []
-        for dec in range(10):
-            sub = data[data['decile'] == dec]
-            obs = sub['Y'].sum()
-            exp = sub['pred'].sum()
-            n = len(sub)
-            hl.append({
-                'decile': int(dec),
-                'observed': int(obs),
-                'expected': float(exp),
-                'n': int(n)
-            })
-        # Chi-cuadrado HL
-        hl_stat = sum((d['observed'] - d['expected'])**2 / (d['expected'] * (1 - d['expected']/d['n']) + 1e-6) for d in hl)
-        results['Hosmer-Lemeshow'] = {
-            'table': hl,
-            'chi2': hl_stat,
-            'df': 8,
-            'p-value': 1 - stats.chi2.cdf(hl_stat, 8)
-        }
+    # 6) Multicolinealidad: VIF
+    vif_dict: Dict[str, float] = {}
+    X_np = X.values
+    for i, feat in enumerate(features):
+        vif_dict[feat] = variance_inflation_factor(X_np, i)
 
-    else:
-        # MNL u otros
-        results['info'] = "Diagnósticos para MNL aún no implementados."
-
-    return results
+    return {
+        'bp_pvalue': bp_pvalue,
+        'jb_pvalue': jb_pvalue,
+        'vif': vif_dict,
+        'residuals': data['resid']
+    }

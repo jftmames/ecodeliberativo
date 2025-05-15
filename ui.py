@@ -171,19 +171,20 @@ def main():
                         EpistemicNavigator.record(q, ans, parent=0)
 
                 st.markdown("**Añadir subpregunta manual:**")
-                # Rotación del key para limpiar el input tras añadir
+                # Key rotatorio para reset automático del input tras añadir
                 new_subq = st.text_input(
                     "Nueva subpregunta",
                     key=f"manual_subq_input_{st.session_state.manual_subq_key}",
                     placeholder="Introduce una subpregunta y pulsa Añadir",
                 )
 
-                if st.button("Añadir subpregunta manual"):
+                add_manual = st.button("Añadir subpregunta manual")
+                if add_manual:
                     if new_subq.strip():
                         EpistemicNavigator.add_step(new_subq.strip(), parent=0)
-                        st.session_state.manual_subq_key += 1  # Cambia el key, fuerza rerender limpio
-                        st.experimental_rerun()
-                        return
+                        st.session_state.manual_subq_key += 1  # Cambia key, limpia input
+                        st.success("Subpregunta añadida.")
+                        # ¡NO uses rerun aquí!
                     else:
                         st.warning("La subpregunta no puede estar vacía.")
 

@@ -31,7 +31,7 @@ class ReasoningTracker:
         self.steps = []
 
     def export_for_report(self):
-        # Para usar en el informe: devuelve los pasos con pregunta, respuesta, tipo y comentarios
+        # Devuelve los pasos en formato simple para informes
         return [
             {
                 "Pregunta": step["question"],

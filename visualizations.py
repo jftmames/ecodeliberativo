@@ -1,61 +1,54 @@
-# visualizations.py
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 
-import matplotlib.pyplot as plt
-import numpy as np
+def graficar_elasticidades(elasticidades: dict):
+    """
+    Genera un gráfico de barras interactivo para elasticidades.
 
-def plot_choice_probabilities(probs_df, show=False):
+    Parámetros:
+        elasticidades (dict): {variable: valor_elasticidad}
     """
-    Dibuja las probabilidades de elección para cada alternativa.
-    - probs_df: DataFrame donde cada columna es una alternativa y cada fila una observación.
-    Devuelve la figura matplotlib.
-    """
-    fig, ax = plt.subplots()
-    # Promedio por alternativa
-    mean_probs = probs_df.mean(axis=0)
-    ax.bar(mean_probs.index, mean_probs.values)
-    ax.set_xlabel("Alternativa")
-    ax.set_ylabel("Probabilidad media")
-    ax.set_title("Distribución de probabilidades de elección")
-    if show:
-        plt.show()
+    if not elasticidades:
+        return None
+
+    df_elas = pd.DataFrame(list(elasticidades.items()), columns=["Variable", "Elasticidad"])
+    fig = px.bar(
+        df_elas,
+        x="Variable",
+        y="Elasticidad",
+        title="Elasticidades de las variables",
+        text="Elasticidad",
+        labels={"Elasticidad": "Elasticidad", "Variable": "Variable"},
+    )
+    fig.update_traces(texttemplate='%{text:.2f}', textposition='outside')
+    fig.update_layout(
+        yaxis=dict(title="Elasticidad"),
+        xaxis=dict(title="Variable"),
+        uniformtext_minsize=8,
+        uniformtext_mode='hide',
+        margin=dict(t=40, b=40)
+    )
     return fig
 
-def plot_elasticities(elasticities: dict, show=False):
+def graficar_simulacion_contrafactual(pred_original: float, pred_contrafactual: float):
     """
-    Dibuja un gráfico de barras con las elasticidades calculadas.
-    - elasticities: dict {variable: elasticidad}
-    Devuelve la figura matplotlib.
-    """
-    fig, ax = plt.subplots()
-    vars_ = list(elasticities.keys())
-    vals = list(elasticities.values())
-    ax.bar(vars_, vals)
-    ax.set_xlabel("Variable")
-    ax.set_ylabel("Elasticidad")
-    ax.set_title("Elasticidades estimadas")
-    if show:
-        plt.show()
-    return fig
+    Genera gráfico comparativo de barras para predicción original vs contrafactual.
 
-def plot_rational_path(tracker_json, show=False):
+    Parámetros:
+        pred_original (float): Valor predicho con datos originales.
+        pred_contrafactual (float): Valor predicho con escenario contrafactual.
     """
-    Dibuja un diagrama simple de la secuencia de preguntas y respuestas.
-    - tracker_json: {'steps': [ {'question','answer',...}, ... ]}
-    Devuelve la figura matplotlib.
-    """
-    steps = tracker_json.get("steps", [])
-    questions = [s["question"] for s in steps]
-    answers = [s["answer"] or "<sin respuesta>" for s in steps]
-    y = np.arange(len(steps))
-    
-    fig, ax = plt.subplots(figsize=(6, len(steps)*0.5))
-    ax.scatter([0]*len(steps), y)
-    ax.hlines(y, xmin=0, xmax=1)
-    for i, (q, a) in enumerate(zip(questions, answers)):
-        ax.text(0.05, i, f"Q: {q}", va='center')
-        ax.text(0.5, i, f"A: {a}", va='center')
-    ax.axis('off')
-    ax.set_title("Camino racional: preguntas y respuestas")
-    if show:
-        plt.show()
+    fig = go.Figure(
+        data=[
+            go.Bar(name='Original', x=['Predicción'], y=[pred_original], marker_color='blue'),
+            go.Bar(name='Contrafactual', x=['Predicción'], y=[pred_contrafactual], marker_color='orange')
+        ]
+    )
+    fig.update_layout(
+        title="Comparación de predicción original y contrafactual",
+        yaxis_title="Valor predicho",
+        barmode='group',
+        margin=dict(t=40, b=40)
+    )
     return fig

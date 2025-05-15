@@ -1,12 +1,13 @@
 import pandas as pd
 import numpy as np
 import statsmodels.api as sm
-import statsmodels.formula.api as smf
 from statsmodels.discrete.discrete_model import Logit, Probit, MNLogit, Poisson
 from statsmodels.regression.linear_model import OLS
-from statsmodels.miscmodels.tmodel import Tobit
 from sklearn.preprocessing import LabelEncoder
 from typing import Dict, Any
+
+# Importar Tobit del paquete externo
+from tobit import TobitModel
 
 def prepare_X_y(df, y_var, x_vars):
     X = df[x_vars]
@@ -54,28 +55,35 @@ def fit_probit(df: pd.DataFrame, y_var: str, x_vars: list) -> Dict[str, Any]:
         "predicted": result.predict(X)
     }
 
-def fit_tobit(df: pd.DataFrame, y_var: str, x_vars: list, left=0, right=np.inf) -> Dict[str, Any]:
-    X, y = prepare_X_y(df, y_var, x_vars)
-    model = Tobit(y, X, left=left, right=right)
-    result = model.fit(disp=0)
+def fit_tobit(df: pd.DataFrame, y_var: str, x_vars: list, left=0, right=None) -> Dict[str, Any]:
+    X = df[x_vars].values
+    y = df[y_var].values
+    model = TobitModel(y, X, left=left, right=right)
+    res = model.fit(method="bfgs")
+    coef = pd.Series(res.params, index=["const"] + x_vars if "const" not in x_vars else x_vars)
+    summary = f"Tobit Model fitted with {len(y)} observations."
     questions = [
-        "¿Por qué se utiliza un modelo Tobit y no OLS?",
-        "¿Qué efectos tienen los límites de censura en la interpretación de los coeficientes?",
-        "¿Se justifica la hipótesis de normalidad de los errores?"
+        "¿Por qué usar Tobit para datos censurados?",
+        "¿Cómo interpretar los coeficientes en presencia de censura?",
+        "¿Se cumplen las hipótesis del modelo Tobit?"
     ]
-    diagnostics = model_diagnostics(result, model_name="Tobit")
+    diagnostics = {
+        "log_likelihood": res.llf,
+        "AIC": getattr(res, "aic", None),
+        "BIC": getattr(res, "bic", None),
+    }
+    predicted = model.predict(X)
     return {
         "modelo": "Tobit",
-        "result": result,
-        "summary": result.summary().as_text(),
-        "coef": result.params,
+        "result": res,
+        "summary": summary,
+        "coef": coef,
         "questions": questions,
         "diagnostics": diagnostics,
-        "predicted": result.predict(X)
+        "predicted": predicted,
     }
 
 def fit_mnl(df: pd.DataFrame, y_var: str, x_vars: list) -> Dict[str, Any]:
-    # Codificar la variable dependiente
     y_enc = LabelEncoder().fit_transform(df[y_var])
     X = sm.add_constant(df[x_vars], has_constant='add')
     model = MNLogit(y_enc, X)
@@ -136,10 +144,7 @@ def fit_poisson(df: pd.DataFrame, y_var: str, x_vars: list) -> Dict[str, Any]:
         "predicted": result.predict(X)
     }
 
-# ---- UTILIDADES Y DIAGNÓSTICOS ----
-
 def model_diagnostics(result, model_name="Modelo"):
-    """Devuelve diccionario de diagnósticos clave para el informe deliberativo."""
     diags = {}
     try:
         if hasattr(result, 'resid'):
@@ -162,10 +167,7 @@ def model_diagnostics(result, model_name="Modelo"):
         diags['error'] = f"Error en diagnóstico: {str(e)}"
     return diags
 
-# ---- GESTOR GENERAL DE MODELOS ----
-
 def run_model(df: pd.DataFrame, modelo: str, y_var: str, x_vars: list, **kwargs):
-    """Lanza el modelo adecuado según string 'modelo'."""
     if modelo == "Logit":
         return fit_logit(df, y_var, x_vars)
     elif modelo == "Probit":
@@ -180,25 +182,3 @@ def run_model(df: pd.DataFrame, modelo: str, y_var: str, x_vars: list, **kwargs)
         return fit_poisson(df, y_var, x_vars)
     else:
         raise ValueError("Modelo no implementado: " + modelo)
-
-# ---- OPCIONAL: UTILIDAD PARA EXPORTAR COEFICIENTES A CSV ----
-
-def export_coef_to_csv(result_dict: Dict[str, Any], filepath: str):
-    coefs = result_dict.get("coef")
-    if coefs is not None:
-        if isinstance(coefs, pd.Series):
-            coefs.to_csv(filepath)
-        elif isinstance(coefs, pd.DataFrame):
-            coefs.to_csv(filepath)
-        else:
-            pd.DataFrame(coefs).to_csv(filepath)
-    else:
-        raise ValueError("No hay coeficientes para exportar.")
-
-# ---- OPCIONAL: ELASTICIDADES PARA MNL ----
-
-def calculate_elasticities_mnl(result, X, y_enc):
-    # Aquí puedes calcular elasticidades propias/cruzadas para MNL
-    # Ejemplo simple (debes personalizar según tu aplicación)
-    return {}
-

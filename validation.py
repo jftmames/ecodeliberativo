@@ -26,30 +26,21 @@ def check_model_diagnostics(
         Lista de nombres de columnas usadas como regresores.
     target : str, opcional
         Nombre de la columna objetivo. Si no se especifica, se toma la última columna de df.
-
-    Devuelve
-    -------
-    dict
-        {
-            'bp_pvalue': float,         # p-valor test Breusch–Pagan
-            'jb_pvalue': float,         # p-valor test Jarque–Bera
-            'vif': Dict[str, float],    # VIF por cada feature
-            'residuals': pd.Series      # residuos calculados
-        }
     """
 
-    # 0) Reset de índice y copia
+    # --- 0) Reset de índice y copia ---
     data = df.reset_index(drop=True).copy()
+    n_rows = data.shape[0]
 
-    # 1) Inferir target si no se pasa
+    # --- 1) Inferir target si no se pasa ---
     if target is None:
         target = data.columns[-1]
 
-    # 2) Preparar X e y sobre el DataFrame reinicializado
+    # --- 2) Preparar X e y ---
     X = data[features]
     y = data[target]
 
-    # 3) Reconstruir la matriz exógena tal cual la usó el modelo (incluye constante)
+    # --- 3) Reconstruir exógeno (constante + features) ---
     exog = None
     try:
         exog_names = model.model.exog_names
@@ -58,39 +49,42 @@ def check_model_diagnostics(
             if name.lower() in ('const', 'intercept'):
                 exog[name] = 1.0
             else:
-                # asumimos que la columna existe en data
                 exog[name] = data[name]
     except Exception:
-        # si falla, seguiremos sin exog explícito
         exog = None
 
-    # 4) Obtener predicciones usando la matriz apropiada
+    # --- 4) Obtener predicciones ---
+    base = exog if exog is not None else X
     try:
-        preds = model.predict(exog if exog is not None else X)
+        preds = model.predict(base)
     except Exception:
-        # en último recurso, pasar numpy array
-        preds = model.predict((exog if exog is not None else X).values)
+        preds = model.predict(base.values)
 
-    # 5) Aplanar y comprobar longitud
+    # --- 5) Aplanar y corregir mismatch múltiple ---
     preds = np.asarray(preds).flatten()
-    if preds.size != data.shape[0]:
-        raise ValueError(
-            f"Predicciones ({preds.size}) no coinciden con filas de datos ({data.shape[0]})."
-        )
+    if preds.size != n_rows:
+        if preds.size % n_rows == 0:
+            # “Desapilamos” y tomamos la primera tanda
+            blocks = preds.size // n_rows
+            preds = preds.reshape(blocks, n_rows)[0]
+        else:
+            raise ValueError(
+                f"Predicciones ({preds.size}) no coinciden con filas de datos ({n_rows})."
+            )
 
-    # 6) Asignar predicciones y residuos
+    # --- 6) Asignar predicciones y residuos ---
     data['pred']  = preds
     data['resid'] = data[target] - data['pred']
 
-    # 7) Heterocedasticidad: Breusch–Pagan
+    # --- 7) Breusch–Pagan (heterocedasticidad) ---
     bp_exog = exog if exog is not None else X
     bp_test = het_breuschpagan(data['resid'], bp_exog)
     bp_pvalue = bp_test[3]
 
-    # 8) Normalidad de residuos: Jarque–Bera
+    # --- 8) Jarque–Bera (normalidad) ---
     _, jb_pvalue = stats.jarque_bera(data['resid'])
 
-    # 9) Multicolinealidad: VIF (sobre X original)
+    # --- 9) VIF (multicolinealidad) ---
     vif_dict: Dict[str, float] = {}
     X_np = X.values
     for i, feat in enumerate(features):

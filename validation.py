@@ -19,7 +19,7 @@ def check_model_diagnostics(
     Parámetros
     ----------
     df : pd.DataFrame
-        DataFrame que contiene las variables features y target.
+        DataFrame original que contiene las variables features y target.
     model : objeto
         Objeto entrenado con método .predict(exog).
     features : List[str]
@@ -38,53 +38,59 @@ def check_model_diagnostics(
         }
     """
 
-    # Inferir target si no se pasa
+    # 0) Reset de índice y copia
+    data = df.reset_index(drop=True).copy()
+
+    # 1) Inferir target si no se pasa
     if target is None:
-        target = df.columns[-1]
+        target = data.columns[-1]
 
-    # Preparamos X y y (sin constante)
-    X = df[features]
-    y = df[target]
+    # 2) Preparar X e y sobre el DataFrame reinicializado
+    X = data[features]
+    y = data[target]
 
-    # Reconstruir exógeno tal cual el modelo lo espera
-    # (solo para statsmodels con atributo model.exog_names)
+    # 3) Reconstruir la matriz exógena tal cual la usó el modelo (incluye constante)
+    exog = None
     try:
         exog_names = model.model.exog_names
-        exog = pd.DataFrame(index=df.index)
+        exog = pd.DataFrame(index=data.index)
         for name in exog_names:
-            if name.lower() in ['const', 'intercept']:
+            if name.lower() in ('const', 'intercept'):
                 exog[name] = 1.0
             else:
-                exog[name] = df[name]
-        preds = model.predict(exog)
+                # asumimos que la columna existe en data
+                exog[name] = data[name]
     except Exception:
-        # Fallback: intentar con DataFrame de features
-        try:
-            preds = model.predict(X)
-        except Exception:
-            # Último recurso: array numpy
-            preds = model.predict(X.values)
+        # si falla, seguiremos sin exog explícito
+        exog = None
 
-    # Aplanar y chequear longitud
+    # 4) Obtener predicciones usando la matriz apropiada
+    try:
+        preds = model.predict(exog if exog is not None else X)
+    except Exception:
+        # en último recurso, pasar numpy array
+        preds = model.predict((exog if exog is not None else X).values)
+
+    # 5) Aplanar y comprobar longitud
     preds = np.asarray(preds).flatten()
-    if preds.shape[0] != df.shape[0]:
+    if preds.size != data.shape[0]:
         raise ValueError(
-            f"Predicciones ({preds.shape[0]}) no coinciden con filas de datos ({df.shape[0]})."
+            f"Predicciones ({preds.size}) no coinciden con filas de datos ({data.shape[0]})."
         )
 
-    # Construimos DataFrame de diagnóstico
-    data = df.reset_index(drop=True).copy()
+    # 6) Asignar predicciones y residuos
     data['pred']  = preds
     data['resid'] = data[target] - data['pred']
 
-    # 1) Heterocedasticidad: Breusch–Pagan
-    bp_test    = het_breuschpagan(data['resid'], exog if 'exog' in locals() else X)
-    bp_pvalue  = bp_test[3]
+    # 7) Heterocedasticidad: Breusch–Pagan
+    bp_exog = exog if exog is not None else X
+    bp_test = het_breuschpagan(data['resid'], bp_exog)
+    bp_pvalue = bp_test[3]
 
-    # 2) Normalidad de residuos: Jarque–Bera
-    jb_stat, jb_pvalue = stats.jarque_bera(data['resid'])
+    # 8) Normalidad de residuos: Jarque–Bera
+    _, jb_pvalue = stats.jarque_bera(data['resid'])
 
-    # 3) Multicolinealidad: VIF (solo sobre X original)
+    # 9) Multicolinealidad: VIF (sobre X original)
     vif_dict: Dict[str, float] = {}
     X_np = X.values
     for i, feat in enumerate(features):

@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import numpy as np
 
-from econometrics import estimate_model
+from econometrics import estimate_model, estimate_nested_logit_pylogit
 from mnl import fit_mnl, predict_mnl
 from elasticities import compute_elasticities
 from deliberation_engine import DeliberationEngine
@@ -43,7 +43,6 @@ def generar_datos_ejemplo(tipo):
         explicacion = "Y es una variable de conteo: ideal para Poisson (por ejemplo, número de compras, incidencias)."
         nests = None
     elif tipo == "Nested Logit":
-        # Datos apilados
         n_personas = 100
         n_alternativas = 3
         data = []
@@ -206,22 +205,27 @@ def main():
             else:
                 X = df[FEATURES]
                 y = df["Y"]
-            if st.button(f"Estimar modelo {model_name}"):
+            if model_name == "Nested Logit" and not FEATURES:
+                st.error("Debes seleccionar al menos una variable explicativa para Nested Logit.")
+            elif st.button(f"Estimar modelo {model_name}"):
                 with st.spinner(f"Estimando modelo {model_name}..."):
                     if model_name == "MNL":
                         st.session_state.model = fit_mnl(df, FEATURES)
                     elif model_name == "Nested Logit":
-                        from econometrics import estimate_nested_logit_pylogit
-                        st.session_state.model = estimate_nested_logit_pylogit(
-                            df, st.session_state.nests, alt_id_col="alt_id", obs_id_col="obs_id", choice_col="choice"
-                        )
+                        try:
+                            st.session_state.model = estimate_nested_logit_pylogit(
+                                df, st.session_state.nests, FEATURES,
+                                alt_id_col="alt_id", obs_id_col="obs_id", choice_col="choice"
+                            )
+                            st.success(f"Modelo {model_name} estimado correctamente.")
+                            st.info(f"Variables utilizadas: {', '.join(FEATURES)}")
+                            st.text(st.session_state.model.summary())
+                        except Exception as e:
+                            st.error(str(e))
+                            st.stop()
                     else:
                         st.session_state.model = estimate_model(model_name, X, y)
-                    st.success(f"Modelo {model_name} estimado correctamente.")
-                    st.write("Resumen del modelo:")
-                    if model_name == "Nested Logit":
-                        st.text(st.session_state.model.summary())
-                    else:
+                        st.success(f"Modelo {model_name} estimado correctamente.")
                         st.text(st.session_state.model.summary())
                 st.rerun()
                 return
@@ -347,7 +351,6 @@ def main():
                     st.rerun()
                     return
 
-                # --- VISUALIZACIÓN CORREGIDA del árbol deliberativo ---
                 if steps:
                     st.subheader("Árbol deliberativo")
                     try:

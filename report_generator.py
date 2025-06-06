@@ -1,5 +1,6 @@
 from jinja2 import Template
 import datetime
+import pandas as pd
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -35,16 +36,22 @@ HTML_TEMPLATE = """
     <div class="section">
         <h2>Coeficientes</h2>
         <table>
-            <tr>
-                <th>Variable</th>
-                <th>Coeficiente</th>
-            </tr>
-            {% for v, c in coef.items() %}
-            <tr>
-                <td>{{ v }}</td>
-                <td>{{ "{:0.4f}".format(c) }}</td>
-            </tr>
-            {% endfor %}
+            <thead>
+                <tr>
+                    {% for header in coef_table.headers %}
+                    <th>{{ header }}</th>
+                    {% endfor %}
+                </tr>
+            </thead>
+            <tbody>
+                {% for row in coef_table.rows %}
+                <tr>
+                    {% for cell in row %}
+                    <td>{{ cell }}</td>
+                    {% endfor %}
+                </tr>
+                {% endfor %}
+            </tbody>
         </table>
     </div>
     <div class="section">
@@ -88,7 +95,38 @@ HTML_TEMPLATE = """
 
 def generar_informe_html(modo, modelo, y_var, x_vars, resumen, coef, diagnostico, deliberacion, eee=None, eee_texto="", feedback=""):
     fecha = datetime.datetime.now().strftime("%d/%m/%Y %H:%M")
+    
+    # --- INICIO DE LA CORRECCIÓN ---
+    # Preparamos una estructura de tabla para los coeficientes que funcione
+    # tanto para Series (modelos simples) como para DataFrames (modelo MNL)
+    coef_table = {
+        "headers": [],
+        "rows": []
+    }
+    
+    # Convertir el objeto de coeficientes a DataFrame si es necesario
+    if isinstance(coef, pd.Series):
+        coef_df = coef.to_frame("Coeficiente")
+    else:  # Si ya es un DataFrame
+        coef_df = coef.copy()
+
+    # Formatear todos los valores numéricos a 4 decimales
+    for col in coef_df.columns:
+        # Asegurarse de que la columna sea numérica antes de formatear
+        if pd.api.types.is_numeric_dtype(coef_df[col]):
+            coef_df[col] = coef_df[col].map('{:0.4f}'.format)
+    
+    # Preparar la estructura final para la plantilla
+    coef_df.reset_index(inplace=True)
+    coef_df.rename(columns={'index': 'Variable'}, inplace=True)
+    
+    coef_table["headers"] = coef_df.columns.tolist()
+    coef_table["rows"] = coef_df.values.tolist()
+    # --- FIN DE LA CORRECCIÓN ---
+
     template = Template(HTML_TEMPLATE)
+    
+    # Renderizamos la plantilla con la nueva estructura de tabla para coeficientes
     html = template.render(
         fecha=fecha,
         modo=modo,
@@ -96,7 +134,7 @@ def generar_informe_html(modo, modelo, y_var, x_vars, resumen, coef, diagnostico
         y_var=y_var,
         x_vars=x_vars,
         resumen=resumen,
-        coef=coef.to_dict() if hasattr(coef, "to_dict") else dict(coef),
+        coef_table=coef_table, # Pasamos la nueva estructura a la plantilla
         diagnostico=diagnostico,
         deliberacion=deliberacion,
         eee=eee,

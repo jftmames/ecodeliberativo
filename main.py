@@ -141,11 +141,24 @@ def main():
             with col3:
                 st.metric("Modelo principal", modelo_ref)
 
+            # --- INICIO DE LA CORRECCIÓN ---
             if hasattr(res["coef"], "index"):
-                coef_df = res["coef"].to_frame("Coeficiente").reset_index().rename(columns={"index": "Variable"})
+                coef_df = None
+                # Comprueba si los coeficientes son una Serie o un DataFrame
+                if isinstance(res["coef"], pd.Series):
+                    coef_df = res["coef"].to_frame("Coeficiente").reset_index().rename(columns={"index": "Variable"})
+                else:  # Si ya es un DataFrame (caso MNL)
+                    coef_df = res["coef"]
+
+                # Muestra la tabla de coeficientes, que es útil para todos los modelos
+                st.markdown("#### Coeficientes del modelo")
+                st.dataframe(coef_df)
+                
+                # Intenta graficar las elasticidades si existen y son compatibles
                 fig_coef = graficar_elasticidades(res.get("elasticities", {}))
                 if fig_coef:
                     st.plotly_chart(fig_coef, use_container_width=True)
+            # --- FIN DE LA CORRECCIÓN ---
 
             if "predicted" in res:
                 pred = res["predicted"]

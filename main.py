@@ -1,25 +1,26 @@
 import streamlit as st
 import pandas as pd
-import numpy as np  # Por si lo usas en cálculos o transformaciones
+import numpy as np
 from econometrics import run_model
 from deliberation_engine import preguntar_deliberativo
 from report_generator import generar_informe_html
 from epistemic_metrics import calcular_metricas_deliberativas, perfil_eee
 from visualizations import graficar_elasticidades, graficar_simulacion_contrafactual
+# --- INICIO DE CAMBIOS ---
+from ai_reasoning_generator import generate_deliberative_questions
+# --- FIN DE CAMBIOS ---
 
 import networkx as nx
 import matplotlib.pyplot as plt
 import plotly.express as px
 import plotly.graph_objects as go
-
-# Opcional (si usas json, datetime u otros en main.py)
 import json
 import datetime
-
 
 st.set_page_config(page_title="Simulador Econométrico-Deliberativo", layout="wide")
 
 def mostrar_tips_perfil(modo):
+    # ... (esta función no cambia)
     if modo == "Docente":
         st.sidebar.markdown(
             """
@@ -54,6 +55,13 @@ def main():
     modo = st.sidebar.selectbox("Modo de uso", ["Docente", "Consultor", "Institucional"])
     mostrar_tips_perfil(modo)
 
+    # --- INICIO DE CAMBIOS ---
+    st.sidebar.markdown("---")
+    st.sidebar.header("Configuración de IA (Opcional)")
+    api_key = st.sidebar.text_input("Introduce tu clave de API de OpenAI", type="password", help="Tu clave se usa para generar preguntas de razonamiento dinámicas.")
+    st.sidebar.markdown("---")
+    # --- FIN DE CAMBIOS ---
+
     st.sidebar.header("Datos de análisis")
     data_source = st.sidebar.radio("¿Cómo quieres cargar los datos?", ["Ejemplo", "Subir CSV"])
     if data_source == "Ejemplo":
@@ -86,7 +94,7 @@ def main():
     modelos_seleccionados = st.sidebar.multiselect("Selecciona uno o varios modelos", modelos_disponibles, default=["Logit"])
 
     if "Tobit" in modelos_seleccionados:
-        st.warning("El modelo Tobit está temporalmente deshabilitado por incompatibilidad con la versión actual de Python.")
+        st.warning("El modelo Tobit está temporalmente deshabilitado.")
         modelos_seleccionados = [m for m in modelos_seleccionados if m != "Tobit"]
         if not modelos_seleccionados:
             st.stop()
@@ -99,19 +107,29 @@ def main():
         bics = {}
         summaries = {}
         st.session_state["deliberation_answers"] = {}
-        for modelo in modelos_seleccionados:
-            try:
-                res = run_model(df, modelo, y_var, x_vars, **params_dict.get(modelo, {}))
-                resultados_modelos[modelo] = res
-                aics[modelo] = res["diagnostics"].get("AIC", None)
-                bics[modelo] = res["diagnostics"].get("BIC", None)
-                summaries[modelo] = res["summary"]
-                st.session_state["resultados_modelos"] = resultados_modelos
-                st.session_state["aics"] = aics
-                st.session_state["bics"] = bics
-                st.session_state["summaries"] = summaries
-            except Exception as e:
-                st.error(f"Error en modelo {modelo}: {e}")
+        with st.spinner("Ejecutando modelos y generando razonamiento..."):
+            for modelo in modelos_seleccionados:
+                try:
+                    res = run_model(df, modelo, y_var, x_vars, **params_dict.get(modelo, {}))
+                    
+                    # --- INICIO DE CAMBIOS ---
+                    # Reemplazar las preguntas estáticas por preguntas generadas por IA si hay API key
+                    if api_key:
+                        st.write(f"Generando preguntas con IA para el modelo {modelo}...")
+                        ai_questions = generate_deliberative_questions(api_key, res, modo, y_var, x_vars)
+                        res["questions"] = ai_questions
+                    # --- FIN DE CAMBIOS ---
+
+                    resultados_modelos[modelo] = res
+                    aics[modelo] = res["diagnostics"].get("AIC", None)
+                    bics[modelo] = res["diagnostics"].get("BIC", None)
+                    summaries[modelo] = res["summary"]
+                    st.session_state["resultados_modelos"] = resultados_modelos
+                    st.session_state["aics"] = aics
+                    st.session_state["bics"] = bics
+                    st.session_state["summaries"] = summaries
+                except Exception as e:
+                    st.error(f"Error en modelo {modelo}: {e}")
     else:
         resultados_modelos = st.session_state.get("resultados_modelos", {})
         aics = st.session_state.get("aics", {})
@@ -125,6 +143,8 @@ def main():
                 modelo_ref = m
                 break
 
+    # --- El resto del archivo main.py no necesita cambios ---
+    # ... (código de las pestañas) ...
     tab1, tab2, tab3, tab4 = st.tabs(["Análisis", "Deliberación", "Simulación", "Resultados e Informe"])
 
     with tab1:

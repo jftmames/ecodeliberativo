@@ -199,15 +199,87 @@ def main():
             res = resultados_modelos[modelo_ref]
             st.subheader("Preguntas para el razonamiento deliberativo")
             respuestas_usuario = preguntar_deliberativo(res["questions"])
-            # ... (resto de la lógica de la pestaña no cambia)
             
+            st.subheader("Tus respuestas deliberativas")
+            for i, (preg, resp) in enumerate(respuestas_usuario.items(), 1):
+                st.markdown(f"**{i}. {preg}**<br>{resp}", unsafe_allow_html=True)
+
+            st.subheader("Árbol epistémico (trazabilidad del razonamiento)")
+            try:
+                G = nx.DiGraph()
+                root = "Pregunta raíz"
+                G.add_node(root)
+                for i, (preg, resp) in enumerate(respuestas_usuario.items(), 1):
+                    nodo_p = f"Q{i}: {preg}"
+                    G.add_node(nodo_p)
+                    G.add_edge(root, nodo_p)
+                    if resp.strip():
+                        nodo_r = f"R{i}: {resp[:30]}..." if len(resp) > 30 else f"R{i}: {resp}"
+                        G.add_node(nodo_r)
+                        G.add_edge(nodo_p, nodo_r)
+                fig, ax = plt.subplots(figsize=(8, 2 + len(respuestas_usuario)//2))
+                pos = nx.spring_layout(G, seed=42)
+                nx.draw(G, pos, with_labels=True, node_color="#c6dbef", font_size=8, ax=ax)
+                st.pyplot(fig)
+            except Exception as ex:
+                st.info("No se pudo dibujar el árbol epistémico. Error: " + str(ex))
+
+            metricas = calcular_metricas_deliberativas(respuestas_usuario)
+            st.session_state['metricas'] = metricas  # Guardar métricas en el estado de la sesión
+            st.subheader("Métricas deliberativas detalladas")
+            st.metric("EEE (Índice de Equilibrio Erotético)", metricas['EEE'])
+            st.metric("Coherencia", metricas['Coherencia'])
+            st.metric("Profundidad (palabras promedio)", metricas['Profundidad'])
+            st.metric("Cobertura (proporción respuestas)", metricas['Cobertura'])
+            st.metric("Exploración", metricas['Exploración'])
+            st.caption(perfil_eee(metricas['EEE']))
+
+            st.markdown("### 🗣️ ¿Qué interpretación sugieres a partir de este resultado?")
+            feedback_user = st.text_area("Tu interpretación/reflexión:", key="feedback_user")
+            if st.button("Guardar interpretación", key="btn_feedback"):
+                st.session_state['feedback_user'] = feedback_user # Guardar feedback en el estado
+                st.success("¡Interpretación guardada! Se añadirá al informe final.")
+
+            delib_df = pd.DataFrame(list(respuestas_usuario.items()), columns=["Pregunta", "Respuesta"])
+            st.download_button(
+                label="Descargar respuestas deliberativas (CSV)",
+                data=delib_df.to_csv(index=False).encode("utf-8"),
+                file_name="respuestas_deliberativas.csv",
+                mime="text/csv"
+            )
+
     with tab3:
         st.header("3️⃣ Simulación contrafactual")
         if not modelo_ref:
             st.info("Ejecuta primero un modelo para simular escenarios contrafactuales.")
         else:
             res = resultados_modelos[modelo_ref]
-            # ... (resto de la lógica de la pestaña no cambia)
+            st.write("Ajusta valores para simular un escenario contrafactual:")
+            contrafactual = {}
+            for var in x_vars:
+                min_v = float(df[var].min())
+                max_v = float(df[var].max())
+                mean_v = float(df[var].mean())
+                contrafactual[var] = st.slider(f"{var}", min_value=min_v, max_value=max_v, value=mean_v)
+
+            row = pd.DataFrame([contrafactual])
+            # Comprobación segura para el índice de coeficientes
+            if isinstance(res["coef"], pd.DataFrame):
+                if "const" in res["coef"].index:
+                    row.insert(0, "const", 1.0)
+            elif isinstance(res["coef"], pd.Series):
+                 if "const" in res["coef"].index:
+                    row.insert(0, "const", 1.0)
+
+            try:
+                if "result" in res:
+                    pred_cf = res["result"].predict(row)[0]
+                    st.success(f"Predicción contrafactual: {pred_cf:.4f}")
+                    original_pred = res["result"].predict(res["result"].model.exog)[0]
+                    fig_cf = graficar_simulacion_contrafactual(original_pred, pred_cf)
+                    st.plotly_chart(fig_cf, use_container_width=True)
+            except Exception as e:
+                st.warning(f"No se pudo calcular la predicción contrafactual: {e}")
 
     with tab4:
         st.header("4️⃣ Resultados completos, diagnósticos y exportación de informe")
@@ -218,13 +290,11 @@ def main():
             st.subheader("Resumen del modelo principal")
             st.text(res["summary"])
 
-            # --- INICIO DE LA CORRECCIÓN ---
             st.subheader("Coeficientes del modelo")
             if isinstance(res["coef"], pd.Series):
                 st.dataframe(res["coef"].to_frame(name="Coeficiente"))
-            else: # Es un DataFrame
+            else:
                 st.dataframe(res["coef"])
-            # --- FIN DE LA CORRECCIÓN ---
 
             st.subheader("Diagnóstico automático")
             st.json(res["diagnostics"])
@@ -245,7 +315,33 @@ def main():
 
             st.markdown("---")
             st.subheader("Informe deliberativo")
-            # ... (resto de la lógica de la pestaña no cambia)
+            respuestas_usuario = st.session_state.get("deliberation_answers", {})
+            feedback_user = st.session_state.get("feedback_user", "")
+            metricas = st.session_state.get('metricas')
+            eee = metricas['EEE'] if metricas else None
+            eee_texto = perfil_eee(eee) if eee is not None else ""
+
+            if st.button("Generar informe HTML", key="gen_html"):
+                informe_html = generar_informe_html(
+                    modo=modo,
+                    modelo=modelo_ref,
+                    y_var=y_var,
+                    x_vars=x_vars,
+                    resumen=res["summary"],
+                    coef=res["coef"],
+                    diagnostico=res["diagnostics"],
+                    deliberacion=list(respuestas_usuario.items()) if respuestas_usuario else [],
+                    eee=eee,
+                    eee_texto=eee_texto,
+                    feedback=feedback_user
+                )
+                st.components.v1.html(informe_html, height=800, scrolling=True)
+                st.download_button(
+                    label="Descargar informe HTML",
+                    data=informe_html.encode("utf-8"),
+                    file_name="informe_deliberativo.html",
+                    mime="text/html"
+                )
 
 if __name__ == "__main__":
     main()

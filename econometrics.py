@@ -11,6 +11,10 @@ def fit_tobit(df, y_var, x_vars, **kwargs):
     raise NotImplementedError("El modelo Tobit está temporalmente deshabilitado por incompatibilidad con la versión actual de Python.")
 
 def prepare_X_y(df, y_var, x_vars):
+    """
+    Función auxiliar para preparar los datos de manera consistente.
+    Añade una constante a las variables independientes (X) y selecciona la dependiente (y).
+    """
     X = df[x_vars]
     X = sm.add_constant(X, has_constant='add')
     y = df[y_var]
@@ -57,8 +61,13 @@ def fit_probit(df: pd.DataFrame, y_var: str, x_vars: list) -> Dict[str, Any]:
     }
 
 def fit_mnl(df: pd.DataFrame, y_var: str, x_vars: list) -> Dict[str, Any]:
-    y_enc = LabelEncoder().fit_transform(df[y_var])
-    X = sm.add_constant(df[x_vars], has_constant='add')
+    # --- INICIO DE LA CORRECCIÓN ---
+    # Usamos la función estándar para preparar X e y
+    X, y = prepare_X_y(df, y_var, x_vars)
+    # Codificamos la variable 'y' después de haberla preparado
+    y_enc = LabelEncoder().fit_transform(y)
+    # --- FIN DE LA CORRECCIÓN ---
+    
     model = MNLogit(y_enc, X)
     result = model.fit(disp=0)
     questions = [
